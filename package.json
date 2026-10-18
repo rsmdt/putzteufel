@@ -1,0 +1,28 @@
+{
+  "name": "putzteufel",
+  "version": "0.1.0",
+  "description": "Fullscreen TUI that finds and removes regenerable dev clutter, using each tool's own cleanup command",
+  "type": "module",
+  "bin": {
+    "putzteufel": "bin/putzteufel.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node bin/putzteufel.js",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ink": "^8.0.0",
+    "react": "^19.3.1",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^7.0.2"
+  }
+}
