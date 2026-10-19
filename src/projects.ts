@@ -2,9 +2,10 @@ import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Emit,
+  type Hooks,
   HOME,
   type Plugin,
-  type Safety,
+  type Impact,
   type ScanContext,
   type Target,
   diskUsage,
@@ -23,7 +24,9 @@ export interface ProjectRule {
   contains?: string[];
   clean?: string;
   requires?: string[];
-  safety?: Safety;
+  impact?: Impact;
+  description?: string;
+  hooks?: Hooks;
 }
 
 const NEVER_ENTER = new Set(['.git', '.hg', '.svn']);
@@ -135,8 +138,11 @@ export class ProjectsPlugin implements Plugin {
         label: dir,
         paths,
         project: await this.projectRoot(dir, root),
-        safety: rule.safety ?? 'safe',
+        impact: rule.impact ?? 'rebuild',
+      note: rule.description,
         commands: this.cleanable.get(rule.name) ? [{ run: rule.clean!, cwd: dir }] : [],
+        tool: rule.clean ? { bin: rule.requires?.[0] ?? rule.clean.split(' ')[0], installed: Boolean(this.cleanable.get(rule.name)), clean: [{ run: rule.clean, cwd: dir }] } : undefined,
+        hooks: rule.hooks,
       });
     }
     for (const d of dirs) {

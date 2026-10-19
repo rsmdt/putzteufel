@@ -14,7 +14,7 @@ const target = (fields: Partial<Target>): Target => ({
   sizePaths: [],
   listed: [],
   commands: [],
-  safety: 'safe',
+  impact: 'regenerates',
   selected: true,
   ...fields,
 });

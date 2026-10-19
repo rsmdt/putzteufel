@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { builtinPlugins, builtinRules } from './builtin.ts';
-import { exists, expandHome } from './core.ts';
+import { type Hooks, IMPACT_ORDER, type Impact, exists, expandHome } from './core.ts';
 import type { PluginSpec } from './plugins.ts';
 import type { ProjectRule } from './projects.ts';
 
@@ -12,6 +12,7 @@ export interface Settings {
   olderThan: number;
   recentDays: number;
   disable: string[];
+  hooks: Hooks;
 }
 
 export interface Config {
@@ -22,9 +23,9 @@ export interface Config {
   sources: string[];
 }
 
-const SETTING_KEYS = ['roots', 'exclude', 'olderThan', 'recentDays', 'disable'];
-const RULE_KEYS = ['name', 'markers', 'dirs', 'contains', 'clean', 'requires', 'safety'];
-const PLUGIN_KEYS = ['name', 'category', 'description', 'paths', 'exclude', 'list', 'clean', 'sizePaths', 'requires', 'safety', 'fallback', 'scan'];
+const SETTING_KEYS = ['roots', 'exclude', 'olderThan', 'recentDays', 'disable', 'hooks'];
+const RULE_KEYS = ['name', 'description', 'markers', 'dirs', 'contains', 'clean', 'requires', 'impact', 'hooks'];
+const PLUGIN_KEYS = ['name', 'category', 'description', 'paths', 'exclude', 'list', 'clean', 'sizePaths', 'requires', 'impact', 'tool', 'hooks', 'fallback', 'scan'];
 const LIST_KEYS = ['markers', 'dirs', 'contains', 'requires', 'paths', 'exclude', 'sizePaths', 'roots', 'disable'];
 
 export function defaultConfigFiles(): string[] {
@@ -34,8 +35,18 @@ export function defaultConfigFiles(): string[] {
 
 class ConfigError extends Error {}
 
+function checkStrings(value: unknown, keys: string[], what: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null) throw new ConfigError(`${what} must be an object with ${keys.join(', ')}`);
+  for (const [key, v] of Object.entries(value)) {
+    if (!keys.includes(key)) throw new ConfigError(`${what} has unknown key "${key}"; allowed: ${keys.join(', ')}`);
+    if (typeof v !== 'string') throw new ConfigError(`${what}.${key} must be a shell command string`);
+  }
+}
+
 function checkShape(raw: Record<string, unknown>, allowed: string[], what: string): void {
   if (typeof raw !== 'object' || raw === null) throw new ConfigError(`${what} must be an object`);
+  if ('safety' in raw) throw new ConfigError(`${what}: "safety" was replaced by "impact", one of ${IMPACT_ORDER.map((i) => `"${i}"`).join(', ')}`);
   const unknown = Object.keys(raw).filter((k) => !allowed.includes(k));
   if (unknown.length) throw new ConfigError(`${what} has unknown key(s): ${unknown.join(', ')}`);
   for (const key of LIST_KEYS) {
@@ -43,7 +54,10 @@ function checkShape(raw: Record<string, unknown>, allowed: string[], what: strin
       throw new ConfigError(`${what}: "${key}" must be an array of strings`);
     }
   }
-  if ('safety' in raw && raw.safety !== 'safe' && raw.safety !== 'costly') throw new ConfigError(`${what}: "safety" must be "safe" or "costly"`);
+  if ('impact' in raw && !IMPACT_ORDER.includes(raw.impact as Impact)) throw new ConfigError(`${what}: "impact" must be one of ${IMPACT_ORDER.map((i) => `"${i}"`).join(', ')}`);
+  checkStrings(raw.hooks, ['before', 'after'], `${what}: "hooks"`);
+  checkStrings(raw.tool, ['bin', 'install', 'uninstall'], `${what}: "tool"`);
+  if (raw.tool && typeof (raw.tool as { bin?: unknown }).bin !== 'string') throw new ConfigError(`${what}: "tool" needs "bin", the binary to look for on PATH`);
   for (const key of ['list', 'clean', 'category', 'description']) {
     if (key in raw && typeof raw[key] !== 'string') throw new ConfigError(`${what}: "${key}" must be a string`);
   }
@@ -75,7 +89,7 @@ interface ConfigModule {
 }
 
 export async function loadConfig(files: string[] = defaultConfigFiles(), { builtin = true } = {}): Promise<Config> {
-  const settings: Settings = { roots: [], exclude: [], olderThan: 0, recentDays: 7, disable: [] };
+  const settings: Settings = { roots: [], exclude: [], olderThan: 0, recentDays: 7, disable: [], hooks: {} };
   const rules = new Map<string, ProjectRule>();
   const plugins = new Map<string, PluginSpec>();
   const errors: string[] = [];

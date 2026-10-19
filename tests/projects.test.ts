@@ -36,21 +36,24 @@ test('project scan finds exactly the regenerable folders', async () => {
   assert.ok(existsSync(path.join(root, 'outside/precious')));
 });
 
-test('recent projects and costly rules start unselected, stale safe ones selected', async () => {
+test('recent projects and unknown-impact rules start unselected, stale rebuild ones selected', async () => {
   const root = projectTree();
   const found = await scanProjects(root);
   const byLabel = (rel: string, plugin: string) => found.find((t) => t.label === path.join(root, rel) && t.plugin === plugin)!;
   assert.equal(byLabel('old', 'Node').selected, true);
   assert.ok(byLabel('old', 'Node').ageDays! > 1000);
   assert.equal(byLabel('web', 'Node').selected, false);
-  assert.equal(byLabel('web', 'Node build output').safety, 'costly');
+  assert.equal(byLabel('web', 'Node build output').impact, 'unknown');
+  assert.equal(byLabel('old', 'Node').impact, 'rebuild');
+  assert.match(byLabel('old', 'Node').note ?? '', /install/);
   assert.ok(byLabel('web', 'Node').size! > 0);
 });
 
-test('olderThan drops recently edited projects', async () => {
+test('olderThan leaves recently edited projects unselected', async () => {
   const root = projectTree();
   const found: Target[] = [];
   const ctx = { roots: [root], exclude: [], olderThan: 30, recentDays: 7, signal: new AbortController().signal };
   await scanAll([new ProjectsPlugin(builtinRules)], ctx, (t) => found.push(t), () => undefined);
-  assert.deepEqual(found.map((t) => path.relative(root, t.label)), ['old']);
+  assert.deepEqual(found.filter((t) => t.selected).map((t) => path.relative(root, t.label)), ['old']);
+  assert.ok(found.length > 1);
 });

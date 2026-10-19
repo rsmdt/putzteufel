@@ -83,3 +83,33 @@ test('fallback plugins skip paths a specific plugin already claimed', async () =
   assert.deepEqual(generic, ['other']);
   assert.equal(found.length, 3);
 });
+
+test('the old safety key and unknown impacts are rejected with the allowed values', async () => {
+  const root = tempDir();
+  write(root, { 'c.mjs': `export default { plugins: [{ name: 'Old', paths: ['/tmp/x'], safety: 'costly' }, { name: 'Bad', paths: ['/tmp/x'], impact: 'scary' }, { name: 'Good', paths: ['/tmp/x'], impact: 'redownload', description: 'why' }] };` });
+  const config = await loadConfig([path.join(root, 'c.mjs')], { builtin: false });
+  assert.match(config.errors[0], /plugin "Old": "safety" was replaced by "impact", one of "regenerates", "rebuild", "redownload", "unknown", "dataloss"/);
+  assert.match(config.errors[1], /plugin "Bad": "impact" must be one of/);
+  assert.deepEqual(config.plugins.map((p) => p.name), ['Good']);
+});
+
+test('hooks and tool keys are validated', async () => {
+  const root = tempDir();
+  write(root, {
+    'c.mjs': `export default {
+  settings: { hooks: { before: 'echo start', after: 'echo end' } },
+  projects: [{ name: 'Hooked', dirs: ['out'], hooks: { after: 'echo done' } }],
+  plugins: [
+    { name: 'Good', paths: ['/tmp/x'], tool: { bin: 'thing', install: 'brew install thing' }, hooks: { before: 'echo hi' } },
+    { name: 'No bin', paths: ['/tmp/x'], tool: { install: 'brew install thing' } },
+    { name: 'Bad hook', paths: ['/tmp/x'], hooks: { during: 'echo' } },
+  ],
+};`,
+  });
+  const config = await loadConfig([path.join(root, 'c.mjs')], { builtin: false });
+  assert.deepEqual(config.settings.hooks, { before: 'echo start', after: 'echo end' });
+  assert.deepEqual(config.rules.map((r) => r.hooks), [{ after: 'echo done' }]);
+  assert.deepEqual(config.plugins.map((p) => p.name), ['Good']);
+  assert.match(config.errors[0], /plugin "No bin": "tool" needs "bin"/);
+  assert.match(config.errors[1], /plugin "Bad hook": "hooks" has unknown key "during"; allowed: before, after/);
+});

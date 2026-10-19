@@ -8,11 +8,42 @@ export const HOME = os.homedir();
 export const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
-export type Safety = 'safe' | 'costly';
+export type Impact = 'regenerates' | 'rebuild' | 'redownload' | 'unknown' | 'dataloss';
+
+export interface ImpactInfo {
+  tag: string;
+  color: string;
+  meaning: string;
+  preselected: boolean;
+}
+
+export const IMPACTS: Record<Impact, ImpactInfo> = {
+  regenerates: { tag: 'regenerates', color: '#5fd787', meaning: 'The tool recreates it on its own when needed. Cheap to lose.', preselected: true },
+  rebuild: { tag: 'rebuild', color: '#5fafd7', meaning: 'The next install or build recreates it. Costs time, nothing is lost.', preselected: true },
+  redownload: { tag: 're-download', color: '#d7af5f', meaning: 'Fetched again from the network on next use. Costs bandwidth and time.', preselected: false },
+  unknown: { tag: 'unknown', color: '#d787d7', meaning: 'putzteufel cannot tell whether anything recreates it. Review the files before selecting.', preselected: false },
+  dataloss: { tag: 'data loss', color: '#ff5f5f', meaning: 'Cannot be recovered after removal.', preselected: false },
+};
+
+export const IMPACT_ORDER: Impact[] = ['regenerates', 'rebuild', 'redownload', 'unknown', 'dataloss'];
 
 export interface Command {
   run: string;
   cwd?: string;
+}
+
+export interface Tool {
+  bin: string;
+  installed: boolean;
+  broken?: string;
+  install?: string;
+  uninstall?: string;
+  clean: Command[];
+}
+
+export interface Hooks {
+  before?: string;
+  after?: string;
 }
 
 export interface Target {
@@ -24,7 +55,10 @@ export interface Target {
   sizePaths: string[];
   listed: string[];
   commands: Command[];
-  safety: Safety;
+  impact: Impact;
+  note?: string;
+  tool?: Tool;
+  hooks?: Hooks;
   size?: number;
   ageDays?: number;
   project?: string;
@@ -48,6 +82,7 @@ export interface Plugin {
   category: string;
   description?: string;
   fallback?: boolean;
+  tool?: { bin: string; install?: string };
   available(): Promise<boolean>;
   scan(ctx: ScanContext, emit: Emit): Promise<void>;
   measure(target: Target): Promise<void>;
@@ -93,8 +128,12 @@ export function which(bin: string): Promise<boolean> {
   return whichCache.get(bin)!;
 }
 
-export async function shell(command: string, cwd?: string): Promise<string> {
-  const { stdout } = await execAsync(command, { cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, shell: process.env.SHELL || '/bin/sh' });
+export function forgetWhich(): void {
+  whichCache.clear();
+}
+
+export async function shell(command: string, cwd?: string, timeout = 120_000): Promise<string> {
+  const { stdout } = await execAsync(command, { cwd, timeout, maxBuffer: 64 * 1024 * 1024, shell: process.env.SHELL || '/bin/sh' });
   return stdout;
 }
 
@@ -135,6 +174,52 @@ export async function diskUsage(paths: string[]): Promise<number> {
     .reduce((sum, kb) => sum + kb * 1024, 0);
 }
 
+export async function newestMtime(paths: string[]): Promise<number | undefined> {
+  const times = await Promise.all(
+    paths.map(async (p) => {
+      const stat = await lstat(p).catch(() => null);
+      if (!stat) return 0;
+      if (!stat.isDirectory()) return stat.mtimeMs;
+      const names = await readdir(p).catch(() => [] as string[]);
+      const children = await Promise.all(names.slice(0, 2000).map((n) => lstat(path.join(p, n)).then((s) => s.mtimeMs, () => 0)));
+      return Math.max(stat.mtimeMs, ...children);
+    }),
+  );
+  const newest = Math.max(0, ...times);
+  return newest || undefined;
+}
+
+export interface Entry {
+  name: string;
+  path: string;
+  size: number;
+  isDir: boolean;
+}
+
+export async function entrySizes(paths: string[]): Promise<Entry[]> {
+  const sizes = new Map<string, number>();
+  for (let i = 0; i < paths.length; i += 256) {
+    const chunk = paths.slice(i, i + 256);
+    const stdout = await execFileAsync('du', ['-sk', '--', ...chunk], { maxBuffer: 16 * 1024 * 1024 }).then(
+      (r) => r.stdout,
+      (e: { stdout?: string }) => e.stdout ?? '',
+    );
+    for (const line of stdout.split('\n')) {
+      const tab = line.indexOf('\t');
+      if (tab > 0) sizes.set(line.slice(tab + 1), Number.parseInt(line.slice(0, tab), 10) * 1024);
+    }
+  }
+  const entries = await Promise.all(
+    paths.map(async (p) => ({ name: path.basename(p), path: p, size: sizes.get(p) ?? 0, isDir: await lstat(p).then((s) => s.isDirectory(), () => false) })),
+  );
+  return entries.sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+}
+
+export async function dirEntries(dir: string): Promise<Entry[]> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  return entrySizes(names.map((n) => path.join(dir, n)));
+}
+
 export function human(bytes: number | undefined): string {
   if (bytes === undefined) return '?';
   const units = ['B', 'K', 'M', 'G', 'T'];
@@ -149,6 +234,14 @@ export function human(bytes: number | undefined): string {
 
 export function isRecent(target: Target, recentDays: number): boolean {
   return target.ageDays !== undefined && target.ageDays < recentDays;
+}
+
+export function isYounger(target: Target, recentDays: number, minAge: number): boolean {
+  return (target.project !== undefined && isRecent(target, recentDays)) || isRecent(target, minAge);
+}
+
+export function preselect(target: Target, recentDays: number, minAge: number): boolean {
+  return IMPACTS[target.impact].preselected && !isYounger(target, recentDays, minAge);
 }
 
 export function describeCommand(command: Command): string {

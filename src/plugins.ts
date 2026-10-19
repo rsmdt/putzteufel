@@ -2,12 +2,14 @@ import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Emit,
+  type Hooks,
   type Plugin,
-  type Safety,
+  type Impact,
   type ScanContext,
   type Target,
   type TargetDraft,
   diskUsage,
+  newestMtime,
   expandHome,
   exists,
   matchesAny,
@@ -26,7 +28,9 @@ export interface PluginSpec {
   clean?: string;
   sizePaths?: string[];
   requires?: string[];
-  safety?: Safety;
+  impact?: Impact;
+  tool?: { bin: string; install?: string; uninstall?: string };
+  hooks?: Hooks;
   fallback?: boolean;
   scan?: (ctx: ScanContext) => Promise<TargetDraft[]> | TargetDraft[];
 }
@@ -61,9 +65,11 @@ export class SpecPlugin implements Plugin {
   category: string;
   description?: string;
   fallback: boolean;
+  tool?: { bin: string; install?: string };
 
   constructor(private spec: PluginSpec) {
     this.name = spec.name;
+    this.tool = spec.tool;
     this.category = spec.category ?? 'Custom';
     this.description = spec.description;
     this.fallback = spec.fallback ?? false;
@@ -75,9 +81,11 @@ export class SpecPlugin implements Plugin {
 
   async scan(ctx: ScanContext, emit: Emit): Promise<void> {
     const { spec } = this;
-    const safety = spec.safety ?? 'safe';
+    const impact = spec.impact ?? 'regenerates';
+    const note = spec.description;
+    const hooks = spec.hooks;
     if (spec.scan) {
-      for (const draft of await spec.scan(ctx)) emit({ safety, ...draft });
+      for (const draft of await spec.scan(ctx)) emit({ impact, note, hooks, ...draft });
       return;
     }
     const skip = [...(spec.exclude ?? []), ...ctx.exclude];
@@ -85,12 +93,26 @@ export class SpecPlugin implements Plugin {
     for (const p of await expandAll(spec.paths)) {
       if (!matchesAny(p, skip) && !(await lstat(p)).isSymbolicLink()) matched.push(p);
     }
-    const commands = spec.clean ? [{ run: spec.clean }] : [];
+    const found = spec.tool ? await which(spec.tool.bin) : true;
+    let output: string | undefined;
+    let broken: string | undefined;
+    if (spec.list && found) {
+      output = await shell(spec.list).catch((e: Error & { stderr?: string }) => {
+        if (!spec.tool) throw e;
+        const lines = (e.stderr || e.message).trim().split('\n').map((l) => l.trim()).filter(Boolean);
+        broken = lines.find((l) => /error/i.test(l)) ?? lines.at(-1) ?? 'list command failed';
+        return undefined;
+      });
+    }
+    const installed = found && !broken;
+    const clean = spec.clean ? [{ run: spec.clean }] : [];
+    const tool = spec.tool ? { ...spec.tool, installed, broken, clean } : undefined;
+    const commands = installed ? clean : [];
     if (!spec.list && !spec.clean) {
-      for (const p of matched) emit({ label: p, paths: [p], safety });
+      for (const p of matched) emit({ label: p, paths: [p], impact, note, hooks });
       return;
     }
-    const lines = spec.list ? (await shell(spec.list)).split('\n').map((l) => l.trim()).filter(Boolean) : [];
+    const lines = (output ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
     const listedPaths: string[] = [];
     const listed: string[] = [];
     for (const line of lines) {
@@ -98,12 +120,15 @@ export class SpecPlugin implements Plugin {
       if (!path.isAbsolute(candidate)) listed.push(line);
       else if ((await exists(candidate)) && !matchesAny(candidate, skip)) listedPaths.push(candidate);
     }
-    if (!matched.length && !listedPaths.length && !listed.length) return;
-    emit({ label: spec.name, paths: [...matched, ...listedPaths], listed, commands, sizePaths: await expandAll(spec.sizePaths), safety });
+    const paths = !spec.tool ? [...matched, ...listedPaths] : spec.list && installed ? listedPaths : matched;
+    if (!paths.length && !listed.length) return;
+    emit({ label: spec.name, paths, listed, commands, tool, hooks, sizePaths: await expandAll(spec.sizePaths), impact, note });
   }
 
   async measure(target: Target): Promise<void> {
     const measured = [...target.paths, ...target.sizePaths];
     target.size = measured.length ? await diskUsage(measured) : undefined;
+    const newest = target.paths.length ? await newestMtime(target.paths) : undefined;
+    target.ageDays = newest === undefined ? undefined : (Date.now() - newest) / 86_400_000;
   }
 }

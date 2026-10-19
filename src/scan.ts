@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { type Plugin, type ScanContext, type Target, type TargetDraft, isRecent, limiter } from './core.ts';
+import { type Plugin, type ScanContext, type Target, type TargetDraft, limiter, preselect } from './core.ts';
 
 let nextId = 1;
 
@@ -19,7 +19,7 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
       sizePaths: [],
       listed: [],
       commands: [],
-      safety: 'safe',
+      impact: 'regenerates',
       ...draft,
       id: nextId++,
       plugin: draft.plugin ?? plugin.name,
@@ -36,8 +36,7 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
       measureLimit(async () => {
         if (ctx.signal.aborted) return;
         await plugin.measure(target);
-        if (target.ageDays !== undefined && target.ageDays < ctx.olderThan) return;
-        target.selected = target.safety === 'safe' && !isRecent(target, ctx.recentDays);
+        target.selected = preselect(target, ctx.recentDays, ctx.olderThan);
         onTarget(target);
       }).catch((e: Error) => onError(`${plugin.name}: ${e.message}`)),
     );
