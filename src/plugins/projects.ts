@@ -15,7 +15,7 @@ import {
   matchesAny,
   which,
   wildcard,
-} from './core.ts';
+} from '../core/index.ts';
 
 export interface ProjectRule {
   name: string;

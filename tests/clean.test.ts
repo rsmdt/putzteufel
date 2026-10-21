@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { HOME, type Target, cleanTarget } from '../src/core.ts';
+import { HOME, type Target, cleanTarget } from '../src/core/index.ts';
 import { tempDir, write } from './fixture.ts';
 
 const target = (fields: Partial<Target>): Target => ({

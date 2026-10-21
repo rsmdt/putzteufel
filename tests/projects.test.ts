@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { builtinRules } from '../src/builtin.ts';
-import type { Target } from '../src/core.ts';
-import { ProjectsPlugin } from '../src/projects.ts';
-import { scanAll } from '../src/scan.ts';
+import { builtinRules } from '../src/plugins/builtin/index.ts';
+import type { Target } from '../src/core/index.ts';
+import { ProjectsPlugin } from '../src/plugins/projects.ts';
+import { scanAll } from '../src/engine/scan.ts';
 import { projectTree } from './fixture.ts';
 
 async function scanProjects(root: string, recentDays = 7): Promise<Target[]> {

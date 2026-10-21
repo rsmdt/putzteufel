@@ -1,10 +1,10 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultConfigFiles, loadConfig } from './config.ts';
-import { IMPACTS, type Plugin, type Target, human, tildify, which } from './core.ts';
-import { SpecPlugin } from './plugins.ts';
-import { ProjectsPlugin } from './projects.ts';
-import { scanAll } from './scan.ts';
+import { defaultConfigFiles, loadConfig } from './config/load.ts';
+import { IMPACTS, type Plugin, type Target, human, tildify, which } from './core/index.ts';
+import { SpecPlugin } from './plugins/spec.ts';
+import { ProjectsPlugin } from './plugins/projects.ts';
+import { scanAll } from './engine/scan.ts';
 
 const HELP = `putzteufel [ROOTS...] [options]
 
@@ -82,7 +82,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
 
-  const [{ createCliRenderer }, { createRoot }, { App }] = await Promise.all([import('@opentui/core'), import('@opentui/react'), import('./tui.tsx')]);
+  const [{ createCliRenderer }, { createRoot }, { App }] = await Promise.all([import('@opentui/core'), import('@opentui/react'), import('./tui/App.tsx')]);
   const renderer = await createCliRenderer({ screenMode: 'alternate-screen', useMouse: true, exitOnCtrlC: true });
   createRoot(renderer).render(<App plugins={plugins} ctx={ctx} configErrors={config.errors} hooks={config.settings.hooks} onExit={() => renderer.destroy()} />);
   await renderer.closed;

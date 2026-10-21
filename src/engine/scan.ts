@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { type Plugin, type ScanContext, type Target, type TargetDraft, limiter, preselect } from './core.ts';
+import { type Plugin, type ScanContext, type Target, type TargetDraft, limiter, preselect } from '../core/index.ts';
 
 let nextId = 1;
 

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'bun:test';
-import { type Target, forgetWhich } from '../src/core.ts';
-import { SpecPlugin } from '../src/plugins.ts';
-import { missingTools, runClean } from '../src/run.ts';
-import { scanAll } from '../src/scan.ts';
+import { type Target, forgetWhich } from '../src/core/index.ts';
+import { SpecPlugin } from '../src/plugins/spec.ts';
+import { missingTools, runClean } from '../src/engine/run.ts';
+import { scanAll } from '../src/engine/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 function setup() {
@@ -56,41 +56,42 @@ test('a missing tool still finds its default folder and is offered for install',
 test('install, native clean, hooks and uninstall run in order', async () => {
   const { root, bin, journal, spec } = setup();
   const [target] = await scan(spec);
-  const log: string[] = [];
-  const result = await runClean(
-    { targets: [target], install: missingTools([target]), uninstallAfter: true, hooks: { before: `echo "run before" >> "${journal}"`, after: `echo "run after" >> "${journal}"` }, useTrash: false },
-    (line) => log.push(line),
-  );
+  const result = await runClean({ targets: [target], install: missingTools([target]), uninstallAfter: true, hooks: { before: `echo "run before" >> "${journal}"`, after: `echo "run after" >> "${journal}"` }, useTrash: false });
   assert.deepEqual(readFileSync(journal, 'utf8').trim().split('\n'), ['run before', 'brew install fakecache', 'plugin before', 'fakecache clean', 'plugin after', 'brew uninstall fakecache', 'run after']);
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), false);
   assert.equal(existsSync(path.join(bin, 'fakecache')), false);
   assert.equal(result.cleaned.has(target.id), true);
-  assert.ok(log.includes('✓ installed fakecache'));
+  assert.deepEqual(result.steps.map((s) => `${s.kind}:${s.state}`), ['hook:done', 'install:done', 'hook:done', 'item:done', 'hook:done', 'uninstall:done', 'hook:done']);
+  assert.equal(result.steps.find((s) => s.kind === 'item')?.detail, 'Ran fakecache clean');
 });
 
 test('an unchecked tool falls back to deleting the folder; a failed install skips the item', async () => {
   const { root, journal, spec } = setup();
   const [target] = await scan(spec);
-  await runClean({ targets: [target], install: [], uninstallAfter: true, hooks: {}, useTrash: false }, () => undefined);
+  const direct = await runClean({ targets: [target], install: [], uninstallAfter: true, hooks: {}, useTrash: false });
+  assert.equal(direct.steps.find((s) => s.kind === 'item')?.detail, 'Deleted 1 folder');
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), false);
   assert.ok(!readFileSync(journal, 'utf8').includes('brew'));
 
   write(root, { 'cache/fakecache/blob': 'x' });
   const [again] = await scan(spec);
-  const log: string[] = [];
   const broken = { ...again.tool!, install: 'false' };
-  await runClean({ targets: [again], install: [broken], uninstallAfter: true, hooks: {}, useTrash: false }, (line) => log.push(line));
+  const failed = await runClean({ targets: [again], install: [broken], uninstallAfter: true, hooks: {}, useTrash: false });
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), true);
-  assert.ok(log.some((l) => l.includes('skipped, fakecache could not be installed')));
+  const kinds = (kind: string) => failed.steps.find((s) => s.kind === kind)!;
+  assert.equal(kinds('install').state, 'failed');
+  assert.equal(kinds('item').state, 'skipped');
+  assert.equal(kinds('item').detail, 'fakecache could not be installed');
 });
 
 test('a failing before hook stops the run before anything is removed', async () => {
   const { root, spec } = setup();
   const [target] = await scan(spec);
-  const log: string[] = [];
-  await runClean({ targets: [target], install: [], uninstallAfter: false, hooks: { before: 'exit 3' }, useTrash: false }, (line) => log.push(line));
+  const stopped = await runClean({ targets: [target], install: [], uninstallAfter: false, hooks: { before: 'exit 3' }, useTrash: false });
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), true);
-  assert.ok(log.includes('Stopped: the before hook failed, nothing was removed.'));
+  assert.equal(stopped.aborted, true);
+  assert.equal(stopped.steps[0].state, 'failed');
+  assert.ok(stopped.steps.slice(1).every((s) => s.state === 'skipped'));
 });
 
 test('an installed tool reports its own location and cleans natively', async () => {
@@ -115,4 +116,32 @@ test('a tool whose own lookup fails falls back to its default folder and is not 
   assert.deepEqual(target.commands, []);
   assert.equal(target.tool?.broken, 'cache disabled');
   assert.deepEqual(missingTools([target]), []);
+});
+
+test('a failing item asks what to do: retry, skip, skip all or abort', async () => {
+  const root = tempDir();
+  write(root, { 'one/a': 'x', 'two/b': 'x', 'three/c': 'x', flag: '' });
+  const target = (id: number, name: string, run: string): Target => ({ id, plugin: 'P', category: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
+  const flaky = `if [ -f "${root}/flag" ]; then rm "${root}/flag"; exit 1; fi; rm -rf "${root}/one"`;
+  const asked: string[] = [];
+  const answers = ['retry', 'abort'] as const;
+  const result = await runClean(
+    { targets: [target(1, 'one', flaky), target(2, 'two', 'exit 1'), target(3, 'three', `rm -rf "${root}/three"`)], install: [], uninstallAfter: false, hooks: { after: 'true' }, useTrash: false },
+    { onFailure: async (step) => (asked.push(step.label), answers[asked.length - 1]) },
+  );
+  assert.equal(asked.length, 2);
+  assert.equal(existsSync(path.join(root, 'one')), false);
+  assert.equal(existsSync(path.join(root, 'three')), true);
+  assert.equal(result.aborted, true);
+  assert.deepEqual(result.steps.map((s) => s.state), ['done', 'failed', 'skipped', 'done']);
+  assert.equal(result.freed, 10);
+
+  write(root, { 'four/d': 'x' });
+  let questions = 0;
+  const skipping = await runClean(
+    { targets: [target(4, 'x1', 'exit 1'), target(5, 'x2', 'exit 1'), target(6, 'four', `rm -rf "${root}/four"`)], install: [], uninstallAfter: false, hooks: {}, useTrash: false },
+    { onFailure: async () => (questions++, 'skipAll') },
+  );
+  assert.equal(questions, 1);
+  assert.deepEqual(skipping.steps.map((s) => s.state), ['failed', 'failed', 'done']);
 });

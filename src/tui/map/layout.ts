@@ -35,7 +35,16 @@ export interface Rect {
   depth: number;
 }
 
-const HUES = [210, 28, 140, 280, 350, 180, 50, 100, 245, 320];
+export const DEFAULT_HUES = [210, 28, 140, 280, 350, 180, 50, 100, 245, 320];
+
+export interface MapGlyphs {
+  top: string;
+  bottom: string;
+  edgeRight: string;
+  edgeBottom: string;
+}
+
+export const BLOCK_GLYPHS: MapGlyphs = { top: '▀', bottom: '▄', edgeRight: '▏', edgeBottom: '▁' };
 const MIN_ARC = 0.012;
 const TAU = Math.PI * 2;
 
@@ -56,8 +65,8 @@ export function shade(hex: string, factor: number): string {
   return `#${[n >> 16, (n >> 8) & 255, n & 255].map((c) => mix(c).toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function categoryColor(index: number, depth: number, sibling: number): string {
-  return hsl(HUES[index % HUES.length], 0.55, Math.min(0.72, 0.42 + depth * 0.07 + (sibling % 4) * 0.04));
+export function categoryColor(index: number, depth: number, sibling: number, hues = DEFAULT_HUES): string {
+  return hsl(hues[index % hues.length], 0.55, Math.min(0.72, 0.42 + depth * 0.07 + (sibling % 4) * 0.04));
 }
 
 export function ancestry(root: MapNode, key: string): MapNode[] {
@@ -116,7 +125,7 @@ function arcColor(arc: Arc, highlight: Set<string>, active: string | undefined):
   return arc.node.dim ? shade(arc.node.color, -0.6) : arc.node.color;
 }
 
-export function renderSunburst(root: MapNode, width: number, height: number, active: string | undefined, centerLines: string[], maxDepth = 3): Cell[][] {
+export function renderSunburst(root: MapNode, width: number, height: number, active: string | undefined, centerLines: string[], maxDepth = 3, glyphs = BLOCK_GLYPHS): Cell[][] {
   const arcs = sunburstArcs(root, maxDepth);
   const geometry = sunburstGeometry(width, height, maxDepth);
   const highlight = new Set(active ? ancestry(root, active).map((n) => n.key) : []);
@@ -130,8 +139,8 @@ export function renderSunburst(root: MapNode, width: number, height: number, act
     for (let x = 0; x < width; x++) {
       const top = pixel(x, row * 2);
       const bottom = pixel(x, row * 2 + 1);
-      if (top) line.push({ ch: '▀', fg: top, bg: bottom });
-      else if (bottom) line.push({ ch: '▄', fg: bottom });
+      if (top) line.push({ ch: glyphs.top, fg: top, bg: bottom });
+      else if (bottom) line.push({ ch: glyphs.bottom, fg: bottom });
       else line.push({ ch: ' ' });
     }
     grid.push(line);
@@ -206,7 +215,7 @@ export function rectAt(rects: Rect[], x: number, y: number): Rect | null {
   return found;
 }
 
-export function renderTreemap(rects: Rect[], width: number, height: number, active: string | undefined, describe: (n: MapNode) => string): Cell[][] {
+export function renderTreemap(rects: Rect[], width: number, height: number, active: string | undefined, describe: (n: MapNode) => string, glyphs = BLOCK_GLYPHS): Cell[][] {
   const grid: Cell[][] = Array.from({ length: height }, () => Array.from({ length: width }, () => ({ ch: ' ' })));
   for (const r of rects) {
     const base = r.node.dim ? shade(r.node.color, -0.6) : r.node.color;
@@ -216,7 +225,7 @@ export function renderTreemap(rects: Rect[], width: number, height: number, acti
       for (let x = r.x; x < r.x + r.w; x++) {
         if (!grid[y]?.[x]) continue;
         const edge = x === r.x + r.w - 1 || y === r.y + r.h - 1;
-        grid[y][x] = edge && r.w > 1 && r.h > 1 ? { ch: x === r.x + r.w - 1 ? '▏' : '▁', fg: shade(base, -0.5), bg } : { ch: ' ', bg };
+        grid[y][x] = edge && r.w > 1 && r.h > 1 ? { ch: x === r.x + r.w - 1 ? glyphs.edgeRight : glyphs.edgeBottom, fg: shade(base, -0.5), bg } : { ch: ' ', bg };
       }
     }
     const labels = [fit(r.node.label, r.w - 2), fit(describe(r.node), r.w - 2)].slice(0, Math.max(0, r.h - 1));

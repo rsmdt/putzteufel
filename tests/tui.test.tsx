@@ -5,11 +5,11 @@ import { afterEach, test } from 'bun:test';
 import { testRender } from '@opentui/react/test-utils';
 import { act } from 'react';
 import { chmodSync, readFileSync } from 'node:fs';
-import { builtinRules } from '../src/builtin.ts';
-import { type Plugin, forgetWhich } from '../src/core.ts';
-import { SpecPlugin } from '../src/plugins.ts';
-import { ProjectsPlugin } from '../src/projects.ts';
-import { App } from '../src/tui.tsx';
+import { builtinRules } from '../src/plugins/builtin/index.ts';
+import { type Plugin, forgetWhich } from '../src/core/index.ts';
+import { SpecPlugin } from '../src/plugins/spec.ts';
+import { ProjectsPlugin } from '../src/plugins/projects.ts';
+import { App } from '../src/tui/App.tsx';
 import { tempDir, write } from './fixture.ts';
 
 let dispose: (() => void) | undefined;

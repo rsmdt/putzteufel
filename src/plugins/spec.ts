@@ -16,7 +16,7 @@ import {
   shell,
   which,
   wildcard,
-} from './core.ts';
+} from '../core/index.ts';
 
 export interface PluginSpec {
   name: string;

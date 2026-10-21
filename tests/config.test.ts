@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { test } from 'node:test';
-import { loadConfig } from '../src/config.ts';
-import type { Target } from '../src/core.ts';
-import { SpecPlugin } from '../src/plugins.ts';
-import { scanAll } from '../src/scan.ts';
+import { loadConfig } from '../src/config/load.ts';
+import type { Target } from '../src/core/index.ts';
+import { SpecPlugin } from '../src/plugins/spec.ts';
+import { scanAll } from '../src/engine/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 async function setup() {

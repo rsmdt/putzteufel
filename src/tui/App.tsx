@@ -2,10 +2,10 @@ import path from 'node:path';
 import type { BoxRenderable, KeyEvent, MouseEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { type Entry, type Hooks, IMPACTS, IMPACT_ORDER, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isRecent, isYounger, listing, preselect, tildify } from './core.ts';
-import { type Cell, type MapNode, ancestry, arcAtPixel, categoryColor, fit, rectAt, renderSunburst, renderTreemap, sunburstArcs, sunburstGeometry, toRuns, treemapRects } from './diskmap.ts';
-import { actionFor, missingTools, runClean } from './run.ts';
-import { scanAll } from './scan.ts';
+import { type Entry, type Hooks, IMPACTS, IMPACT_ORDER, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isRecent, isYounger, listing, preselect, tildify } from '../core/index.ts';
+import { type Cell, type MapNode, ancestry, arcAtPixel, categoryColor, fit, rectAt, renderSunburst, renderTreemap, sunburstArcs, sunburstGeometry, toRuns, treemapRects } from './map/layout.ts';
+import { actionFor, missingTools, runClean } from '../engine/run.ts';
+import { scanAll } from '../engine/scan.ts';
 
 type Row =
   | { kind: 'category'; key: string; name: string; targets: Target[] }

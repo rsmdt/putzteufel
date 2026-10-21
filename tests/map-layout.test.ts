@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { type MapNode, arcAtPixel, fit, rectAt, squarify, sunburstArcs, sunburstGeometry, treemapRects } from '../src/diskmap.ts';
+import { type MapNode, arcAtPixel, fit, rectAt, squarify, sunburstArcs, sunburstGeometry, treemapRects } from '../src/tui/map/layout.ts';
 
 const leaf = (key: string, size: number): MapNode => ({ key, label: key, size, color: '#336699', dim: false, children: [] });
 const group = (key: string, children: MapNode[]): MapNode => ({ key, label: key, size: children.reduce((n, c) => n + c.size, 0), color: '#996633', dim: false, children });
