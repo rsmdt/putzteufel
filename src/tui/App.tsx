@@ -1,294 +1,63 @@
 import path from 'node:path';
-import type { BoxRenderable, KeyEvent, MouseEvent } from '@opentui/core';
+import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { type Entry, type Hooks, IMPACTS, IMPACT_ORDER, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isRecent, isYounger, listing, preselect, tildify } from '../core/index.ts';
-import { type Cell, type MapNode, ancestry, arcAtPixel, categoryColor, fit, rectAt, renderSunburst, renderTreemap, sunburstArcs, sunburstGeometry, toRuns, treemapRects } from './map/layout.ts';
-import { actionFor, missingTools, runClean } from '../engine/run.ts';
-import { scanAll } from '../engine/scan.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { type Hooks, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
+import { missingTools } from '../engine/run.ts';
+import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
+import { type Action, type Context, keyToken, printable, resolve } from './keys.ts';
+import { LookContext } from './look.ts';
+import { ancestry } from './map/layout.ts';
+import { type Browse, browseMap, currentEntry, currentLevel, enter, leave, moveCursor, openBrowse, sortLevel, withLevel } from './model/browse.ts';
+import { type Line, impactLines, legendLines, reviewLines, toolLines } from './model/explain.ts';
+import { type Level, type Message, message } from './model/messages.ts';
+import { buildMap, buildRows, colorIndex, groupTargets, stats, sum } from './model/rows.ts';
+import { DEFAULT_SORT, SORT_KEYS, type Sort, describeSort } from './sort.ts';
+import { useCleanRun } from './state/useCleanRun.ts';
+import { useScan } from './state/useScan.ts';
+import { ICONS, type IconSet, THEMES, themeNamed } from './theme.ts';
+import { HelpDialog, helpLines } from './views/dialogs/Help.tsx';
+import { MessagesDialog } from './views/dialogs/Messages.tsx';
+import { ProgressDialog } from './views/dialogs/Progress.tsx';
+import { ReviewDialog } from './views/dialogs/Review.tsx';
+import { dialogRows } from './views/dialogs/shared.tsx';
+import { SortDialog } from './views/dialogs/Sort.tsx';
+import { ThemeDialog } from './views/dialogs/Theme.tsx';
+import { MIN_SIZE, TooSmall } from './views/dialogs/TooSmall.tsx';
+import { ToolsDialog } from './views/dialogs/Tools.tsx';
+import { WelcomeDialog } from './views/dialogs/Welcome.tsx';
+import { FilesPane } from './views/FilesPane.tsx';
+import { ListPane } from './views/ListPane.tsx';
+import { MAP_MIN_WIDTH, MapPane, type MapMode } from './views/MapPane.tsx';
+import { PreviewPane, previewRows } from './views/PreviewPane.tsx';
 
-type Row =
-  | { kind: 'category'; key: string; name: string; targets: Target[] }
-  | { kind: 'plugin'; key: string; name: string; targets: Target[] }
-  | { kind: 'target'; key: string; target: Target; parent: string };
+export const AGE_STEPS = [0, 1, 3, 7, 14, 30, 60, 90, 180, 365];
+const SUNBURST_DEPTH = 3;
 
-type View = 'list' | 'files' | 'tools' | 'confirm' | 'clean' | 'help';
-type Line = string | { text: string; fg?: string };
-type MapMode = 'sunburst' | 'treemap' | 'off';
-
-interface Browse {
-  target: Target;
-  dirs: string[];
-  entries: Entry[] | null;
-  cursor: number;
-  offset: number;
-}
+type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'review' | 'progress';
+type Focus = 'list' | 'preview' | 'map';
 
 export interface AppProps {
   plugins: Plugin[];
   ctx: Omit<ScanContext, 'signal'>;
   configErrors?: string[];
   hooks?: Hooks;
+  icons?: IconSet;
+  theme?: string;
+  firstRun?: boolean;
+  onSaveState?: (patch: { welcomed?: boolean; theme?: string }) => void;
   onExit: () => void;
 }
 
-export const AGE_STEPS = [0, 1, 3, 7, 14, 30, 60, 90, 180, 365];
-const SUNBURST_DEPTH = 3;
-const ACTIVE_BG = '#2f3646';
-const MUTED = '#808080';
-
-const sum = (targets: Target[]) => targets.reduce((n, t) => n + (t.size ?? 0), 0);
-
-function box(targets: Target[]): string {
-  const selected = targets.filter((t) => t.selected).length;
-  return selected === 0 ? '[ ]' : selected === targets.length ? '[x]' : '[-]';
-}
-
-function stats(targets: Target[]): string {
-  const selected = targets.filter((t) => t.selected);
-  return `${selected.length}/${targets.length} · ${human(sum(selected))} of ${human(sum(targets))}`;
-}
-
-function matches(t: Target, filter: string): boolean {
-  if (!filter) return true;
-  const needle = filter.toLowerCase();
-  return [t.label, t.plugin, t.category, ...t.paths].some((s) => s.toLowerCase().includes(needle));
-}
-
-type Groups = [string, [string, Target[]][]][];
-
-function groupTargets(targets: Target[], filter: string): Groups {
-  const categories = new Map<string, Map<string, Target[]>>();
-  for (const t of targets.filter((t) => matches(t, filter))) {
-    const plugins = categories.get(t.category) ?? new Map<string, Target[]>();
-    categories.set(t.category, plugins);
-    plugins.set(t.plugin, [...(plugins.get(t.plugin) ?? []), t]);
-  }
-  return [...categories.entries()]
-    .sort(([a, pa], [b, pb]) => (a === 'Projects' ? -1 : b === 'Projects' ? 1 : sum([...pb.values()].flat()) - sum([...pa.values()].flat())))
-    .map(([category, plugins]) => [
-      category,
-      [...plugins.entries()].sort(([, a], [, b]) => sum(b) - sum(a)).map(([plugin, list]) => [plugin, [...list].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))] as [string, Target[]]),
-    ]);
-}
-
-function buildRows(groups: Groups, filter: string, collapsed: Set<string>, expanded: Set<string>): Row[] {
-  const rows: Row[] = [];
-  for (const [category, plugins] of groups) {
-    rows.push({ kind: 'category', key: category, name: category, targets: plugins.flatMap(([, list]) => list) });
-    if (collapsed.has(category)) continue;
-    for (const [plugin, list] of plugins) {
-      const key = `${category}/${plugin}`;
-      rows.push({ kind: 'plugin', key, name: plugin, targets: list });
-      if (!expanded.has(key) && !filter) continue;
-      for (const target of list) rows.push({ kind: 'target', key: `t${target.id}`, target, parent: key });
-    }
-  }
-  return rows;
-}
-
-function buildMap(groups: Groups): MapNode {
-  const categories = groups.map(([category, plugins], ci) => {
-    const pluginNodes = plugins.map(([plugin, list], pi) => {
-      const targetNodes = list.map((t, ti) => ({
-        key: `t${t.id}`,
-        label: tildify(t.label),
-        size: t.size ?? 0,
-        color: categoryColor(ci, 2, ti),
-        dim: !t.selected,
-        children: [],
-      }));
-      return { key: `${category}/${plugin}`, label: plugin, size: sum(list), color: categoryColor(ci, 1, pi), dim: !list.some((t) => t.selected), children: targetNodes };
-    });
-    const all = plugins.flatMap(([, list]) => list);
-    return { key: category, label: category, size: sum(all), color: categoryColor(ci, 0, 0), dim: !all.some((t) => t.selected), children: pluginNodes };
-  });
-  return { key: 'root', label: 'Everything', size: categories.reduce((n, c) => n + c.size, 0), color: '#ffffff', dim: false, children: categories };
-}
-
-function colorIndex(root: MapNode): Map<string, string> {
-  const colors = new Map<string, string>();
-  const visit = (n: MapNode) => {
-    colors.set(n.key, n.color);
-    n.children.forEach(visit);
-  };
-  visit(root);
-  return colors;
-}
-
-const entryColor = (index: number) => categoryColor(index, 1, index);
-
-function filesMap(browse: Browse, color: string): MapNode {
-  const entries = browse.entries ?? [];
-  const children = entries.map((e, i) => ({ key: e.path, label: e.name, size: e.size, color: entryColor(i), dim: !browse.target.selected, children: [] }));
-  const label = browse.dirs.length ? path.basename(browse.dirs[browse.dirs.length - 1]) : path.basename(browse.target.label);
-  return { key: 'files', label, size: entries.reduce((n, e) => n + e.size, 0), color, dim: false, children };
-}
-
-function targetDetail(t: Target): string {
-  const relative = t.paths.map((p) => path.relative(t.label, p)).filter((r) => r && !r.startsWith('..'));
-  if (relative.length) return relative.join(', ');
-  if (t.tool && !t.tool.installed && t.tool.clean.length) return t.tool.broken ? `${t.tool.bin} failed` : `${t.tool.bin} not installed`;
-  if (t.commands.length) return `via ${t.commands[0].run}`;
-  return '';
-}
-
-function toolLines(t: Target): Line[] {
-  if (!t.tool?.clean.length) return t.commands.length ? [`Cleaned by: $ ${describeCommand(t.commands[0])}`] : ['Cleaned by deleting the files listed below.'];
-  if (t.tool.installed) return [`Cleaned by its own tool: $ ${describeCommand(t.tool.clean[0])}`];
-  if (t.tool.broken) return [{ text: `${t.tool.bin} is installed but failed (${t.tool.broken}): its default folders are deleted directly.`, fg: 'yellow' }];
-  return [
-    { text: `${t.tool.bin} is not installed: the folders are deleted directly.`, fg: 'yellow' },
-    ...(t.tool.install ? [{ text: `d offers to install it first (${t.tool.install}) and clean with $ ${t.tool.clean[0].run}`, fg: 'yellow' }] : []),
-  ];
-}
-
-function ImpactTag({ target }: { target: Target }) {
-  const info = IMPACTS[target.impact];
-  return <span fg={info.color}>{` ${info.tag}`}</span>;
-}
-
-function impactLines(t: Target, recentDays: number, minAge: number): Line[] {
-  const info = IMPACTS[t.impact];
-  const lines: Line[] = [{ text: `If removed (${info.tag}): ${info.meaning}`, fg: info.color }];
-  if (t.note) lines.push({ text: `  ${t.note}`, fg: info.color });
-  if (!info.preselected) lines.push(`Not selected by default: ${info.tag} items are only removed when you pick them. ? explains the tags.`);
-  else if (t.project !== undefined && isRecent(t, recentDays)) lines.push(`Not selected by default: the project was edited in the last ${recentDays} days.`);
-  else if (isRecent(t, minAge)) lines.push(`Not selected by default: younger than the ${minAge}-day age threshold.`);
-  else lines.push(`Selected by default: ${info.tag} items are recreated without losing anything.`);
-  return lines;
-}
-
-function helpLines(recentDays: number): Line[] {
-  return [
-    'What the tags mean: what happens to an item after it is removed.',
-    '',
-    ...IMPACT_ORDER.flatMap((impact): Line[] => {
-      const info = IMPACTS[impact];
-      return [{ text: `${info.tag.padEnd(12)} ${info.meaning}`, fg: info.color }, `${''.padEnd(12)} ${info.preselected ? 'Selected by default.' : 'Never selected by default.'}`];
-    }),
-    '',
-    { text: `${'recent'.padEnd(12)} A project edited in the last ${recentDays} days, or an item younger than the [ ] age threshold.`, fg: 'cyan' },
-    `${''.padEnd(12)} Never selected by default.`,
-    '',
-    'The preview under the list explains the item at the cursor. Press f to see every file before you decide.',
-    'Nothing is removed until d shows the review screen and you press y.',
-    '',
-    'Any key closes this help.',
-  ];
-}
-
-function Swatch({ color }: { color?: string }) {
-  return <span fg={color ?? MUTED}>● </span>;
-}
-
-function RowLine({ row, active, young, width, color }: { row: Row; active: boolean; young: (t: Target) => boolean; width: number; color?: string }) {
-  const bg = active ? ACTIVE_BG : undefined;
-  if (row.kind === 'category') {
-    return (
-      <text bg={bg} wrapMode="none">
-        <Swatch color={color} />
-        <strong>{fit(row.name, width - 30)}</strong>
-        <span fg={MUTED}>{`  ${stats(row.targets)}`}</span>
-      </text>
-    );
-  }
-  if (row.kind === 'plugin') {
-    return (
-      <text bg={bg} wrapMode="none">
-        {'  '}
-        <Swatch color={color} />
-        {`${box(row.targets)} ${fit(row.name, width - 48)}`}
-        <span fg={MUTED}>{`  ${stats(row.targets)}`}</span>
-        {row.targets[0] ? <ImpactTag target={row.targets[0]} /> : null}
-      </text>
-    );
-  }
-  const t = row.target;
-  const age = t.ageDays === undefined ? '' : `${Math.floor(t.ageDays)}d`;
-  const tags = ` ${IMPACTS[t.impact].tag}${young(t) ? ' recent' : ''}`;
-  const head = `${t.selected ? '[x]' : '[ ]'} ${human(t.size).padStart(7)} ${age.padStart(5)}  `;
-  const detail = targetDetail(t);
-  const room = Math.max(8, width - 8 - head.length - tags.length - Math.min(detail.length, 24) - 2);
-  return (
-    <text bg={bg} fg={t.selected ? undefined : MUTED} wrapMode="none">
-      {'    '}
-      <Swatch color={color} />
-      {head}
-      {fit(tildify(t.label), room)}
-      <span fg={MUTED}>{detail ? `  ${fit(detail, 24)}` : ''}</span>
-      <ImpactTag target={t} />
-      {young(t) ? <span fg="cyan"> recent</span> : null}
-    </text>
-  );
-}
-
-function confirmLines(selected: Target[], useTrash: boolean, install: Set<string>, uninstallAfter: boolean, hooks: Hooks): Line[] {
-  const lines: Line[] = [
-    `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(sum(selected))}.`,
-    'Items with a $ line run that tool command instead of deleting files. Press f on an item in the list to browse its files.',
-  ];
-  const tools = missingTools(selected).filter((t) => install.has(t.bin));
-  const steps: Line[] = [
-    ...(hooks.before ? [`  before hook:  $ ${hooks.before}`] : []),
-    ...tools.map((t) => ({ text: `  install:      $ ${t.install}`, fg: 'yellow' })),
-    ...(uninstallAfter ? tools.filter((t) => t.uninstall).map((t) => ({ text: `  then remove:  $ ${t.uninstall}  (after cleaning; dependencies brew pulled in stay)`, fg: 'yellow' })) : []),
-    ...(hooks.after ? [`  after hook:   $ ${hooks.after}`] : []),
-  ];
-  if (steps.length) lines.push('', 'Run steps:', ...steps);
-  for (const impact of IMPACT_ORDER) {
-    const group = selected.filter((t) => t.impact === impact);
-    if (group.length) lines.push({ text: `  ${String(group.length).padStart(4)} ${IMPACTS[impact].tag.padEnd(12)} ${human(sum(group)).padStart(7)}  ${IMPACTS[impact].meaning}`, fg: IMPACTS[impact].color });
-  }
-  if (selected.some((t) => t.impact === 'dataloss')) lines.push({ text: 'Data loss items cannot be recovered. Check them below before pressing y.', fg: IMPACTS.dataloss.color });
-  lines.push('');
-  for (const t of [...selected].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))) {
-    lines.push({ text: `${human(t.size).padStart(7)}  ${IMPACTS[t.impact].tag.padEnd(12)} [${t.plugin}] ${tildify(t.label)}`, fg: t.impact === 'regenerates' || t.impact === 'rebuild' ? undefined : IMPACTS[t.impact].color });
-    const action = actionFor(t, install);
-    if (t.hooks?.before) lines.push(`           before: $ ${t.hooks.before}`);
-    if (action.kind === 'commands') for (const c of action.commands) lines.push(`           $ ${describeCommand(c)}${action.afterInstall ? '   (after install)' : ''}`);
-    else {
-      if (action.missing) lines.push({ text: `           ${action.missing} not installed: the folders below are deleted directly`, fg: 'yellow' });
-      for (const p of t.paths) if (p !== t.label || action.missing) lines.push(`           - ${tildify(p)}`);
-    }
-    if (t.hooks?.after) lines.push(`           after:  $ ${t.hooks.after}`);
-    for (const l of t.listed) lines.push(`           · ${l}`);
-  }
-  return lines;
-}
-
-function LineText({ line, width, fg }: { line: Line; width: number; fg?: string }) {
-  const { text, fg: own } = typeof line === 'string' ? { text: line, fg: undefined } : line;
-  return (
-    <text wrapMode="none" fg={own ?? fg}>
-      {fit(text, width)}
-    </text>
-  );
-}
-
-function CellRows({ grid }: { grid: Cell[][] }) {
-  return (
-    <>
-      {grid.map((row, y) => (
-        <text key={y} wrapMode="none">
-          {toRuns(row).map((run, i) => (
-            <span key={i} fg={run.fg} bg={run.bg}>
-              {run.text}
-            </span>
-          ))}
-        </text>
-      ))}
-    </>
-  );
-}
-
-export function App({ plugins, ctx, configErrors = [], hooks = {}, onExit }: AppProps) {
+export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onExit }: AppProps) {
   const { width, height } = useTerminalDimensions();
-  const targetsRef = useRef<Target[]>([]);
-  const [version, bump] = useReducer((n: number) => n + 1, 0);
-  const [generation, setGeneration] = useState(0);
-  const [scanning, setScanning] = useState(true);
-  const [errors, setErrors] = useState<string[]>(configErrors);
+  const [messages, setMessages] = useState<Message[]>(configErrors.map((e) => message(e, 'error')));
+  const say = (text: string, level: Level = 'info') => setMessages((all) => [...all.slice(-199), message(text, level)]);
+  const minAgeRef = useRef(ctx.olderThan);
+  const [minAge, setMinAge] = useState(ctx.olderThan);
+  const scan = useScan(plugins, ctx, minAgeRef, (text) => say(text, 'warn'));
+  const run = useCleanRun();
+
   const [cursor, setCursor] = useState(0);
   const cursorRef = useRef(0);
   const offsetRef = useRef(0);
@@ -297,71 +66,58 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, onExit }: App
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
   const [useTrash, setUseTrash] = useState(false);
-  const [view, setView] = useState<View>('list');
-  const [mapMode, setMapMode] = useState<MapMode>('sunburst');
-  const [minAge, setMinAge] = useState(ctx.olderThan);
-  const minAgeRef = useRef(ctx.olderThan);
   const [browse, setBrowse] = useState<Browse | null>(null);
+  const [overlay, setOverlay] = useState<Overlay | null>(firstRun ? 'welcome' : null);
+  const [focus, setFocus] = useState<Focus>('list');
+  const [mapMode, setMapMode] = useState<MapMode>('sunburst');
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
+  const [sortCursor, setSortCursor] = useState(0);
+  const [themeName, setThemeName] = useState(themeNamed(initialTheme).name);
+  const [themeBefore, setThemeBefore] = useState(themeName);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [confirmOffset, setConfirmOffset] = useState(0);
   const [install, setInstall] = useState(new Set<string>());
   const [uninstallAfter, setUninstallAfter] = useState(true);
   const [toolCursor, setToolCursor] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
-  const [cleanDone, setCleanDone] = useState(false);
+  const [dialogOffset, setDialogOffset] = useState(0);
+  const [helpQuery, setHelpQuery] = useState('');
+  const [helpSearching, setHelpSearching] = useState(false);
   const [preview, setPreview] = useState<Line[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
+  const [previewOffset, setPreviewOffset] = useState(0);
   const cleanedRef = useRef<Set<number>>(new Set());
-  const mapRef = useRef<BoxRenderable>(null);
 
-  const bodyHeight = Math.max(6, height - 2);
-  const showMap = mapMode !== 'off' && width >= 90;
+  const look = useMemo(() => ({ theme: themeNamed(themeName), icons: ICONS[icons] }), [themeName, icons]);
+  const theme = look.theme;
+  const screen = { width, height };
+  const bodyHeight = Math.max(6, height - 3);
+  const showMap = mapMode !== 'off' && width >= MAP_MIN_WIDTH;
   const mapWidth = showMap ? Math.floor(width * 0.42) : 0;
-  const listWidth = width - mapWidth;
-  const previewHeight = Math.max(4, Math.floor(bodyHeight * 0.3));
-  const listHeight = Math.max(3, bodyHeight - previewHeight);
-  const mapInner = { w: Math.max(4, mapWidth - 2), h: Math.max(2, bodyHeight - 2) };
+  const leftWidth = width - mapWidth;
+  const previewHeight = Math.max(5, Math.floor(bodyHeight * 0.32));
+  const listHeight = Math.max(4, bodyHeight - previewHeight);
+  const listRows = listHeight - 2;
+  const pageRows = dialogRows(screen);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const buffer: Target[] = [];
-    targetsRef.current = [];
-    setScanning(true);
-    bump();
-    const flush = () => {
-      if (!buffer.length) return;
-      targetsRef.current.push(...buffer.splice(0));
-      bump();
-    };
-    const timer = setInterval(flush, 200);
-    scanAll(
-      plugins,
-      { ...ctx, olderThan: minAge, signal: controller.signal },
-      (t) => buffer.push(t),
-      (message) => setErrors((e) => [...e, message]),
-    ).finally(() => {
-      if (controller.signal.aborted) return;
-      clearInterval(timer);
-      flush();
-      setScanning(false);
-    });
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [generation]);
-
-  const groups = useMemo(() => groupTargets(targetsRef.current, filter), [version, filter]);
+  const targets = scan.targets.current;
+  const { groups, highlights } = useMemo(() => groupTargets(targets, filter, sort), [scan.version, filter, sort]);
   const rows = useMemo(() => buildRows(groups, filter, collapsed, expanded), [groups, collapsed, expanded]);
-  const tree = useMemo(() => buildMap(groups), [groups]);
+  const tree = useMemo(() => buildMap(groups, theme.hues), [groups, theme]);
   const colors = useMemo(() => colorIndex(tree), [tree]);
   const current = rows[Math.min(cursor, rows.length - 1)];
   if (cursor < offsetRef.current) offsetRef.current = cursor;
-  else if (cursor >= offsetRef.current + listHeight) offsetRef.current = cursor - listHeight + 1;
+  else if (cursor >= offsetRef.current + listRows) offsetRef.current = cursor - listRows + 1;
   const offset = offsetRef.current;
-  const selected = targetsRef.current.filter((t) => t.selected);
+  const selected = targets.filter((t) => t.selected);
   const descriptions = useMemo(() => new Map(plugins.map((p) => [p.name, p.description ?? ''])), [plugins]);
+  const young = (t: Target) => isYounger(t, ctx.recentDays, minAge);
+
+  const overlayContext = (): Context | null => {
+    if (!overlay) return null;
+    if (overlay === 'help') return helpSearching ? 'helpSearch' : 'help';
+    if (overlay === 'progress') return run.failure ? 'failure' : run.done ? 'done' : 'progress';
+    return overlay;
+  };
+  const baseContext: Context = filtering ? 'filter' : focus === 'map' && showMap ? 'map' : focus === 'preview' ? 'preview' : browse ? 'files' : 'list';
+  const context = overlayContext() ?? baseContext;
 
   useEffect(() => {
     if (!pendingKey) return;
@@ -370,24 +126,28 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, onExit }: App
     setPendingKey(null);
   }, [rows, pendingKey]);
 
+  useEffect(() => setPreviewOffset(0), [current?.key, browse ? currentEntry(browse)?.path : undefined]);
+
   useEffect(() => {
-    if (view !== 'list') return;
+    if (browse) return;
     if (!current) return setPreview([]);
     if (current.kind !== 'target') {
       const description = current.kind === 'plugin' ? descriptions.get(current.name) : '';
       const first = current.targets[0];
-      const impact: Line[] = current.kind === 'plugin' && first ? [{ text: `If removed (${IMPACTS[first.impact].tag}): ${IMPACTS[first.impact].meaning}`, fg: IMPACTS[first.impact].color }] : [];
-      const tool = current.kind === 'plugin' && first ? toolLines(first) : [];
+      const impact: Line[] = current.kind === 'plugin' && first ? impactLines(first, ctx.recentDays, minAgeRef.current, theme).slice(0, 1) : [];
+      const tool = current.kind === 'plugin' && first && (first.tool?.clean.length || first.commands.length) ? toolLines(first, theme) : [];
       setPreview([`${current.name}: ${stats(current.targets)} selected`, ...impact, ...(description ? [description] : []), ...tool, 'space toggles the whole group, → expands, ← collapses, ? explains the tags']);
       return;
     }
     let cancelled = false;
     const t = current.target;
     const head = `${tildify(t.label)}  ·  ${human(t.size)}  ·  ${t.plugin}${t.ageDays === undefined ? '' : `  ·  last changed ${Math.floor(t.ageDays)}d ago`}`;
-    const explained = [head, ...impactLines(t, ctx.recentDays, minAgeRef.current), ...toolLines(t)];
-    setPreview([...explained, 'loading…']);
+    const explained: Line[] = [head, ...impactLines(t, ctx.recentDays, minAgeRef.current, theme), ...toolLines(t, theme)];
+    setPreview(explained);
+    const slow = setTimeout(() => !cancelled && setPreview([...explained, 'listing files…']), 500);
     const timer = setTimeout(() => {
       listing(t, 400).then(({ lines, truncated }) => {
+        clearTimeout(slow);
         const prefix = tildify(t.label) + path.sep;
         const shown = lines.map((l) => (l.startsWith(prefix) ? `  ${l.slice(prefix.length)}` : l));
         if (!cancelled) setPreview([...explained, ...shown, ...(truncated ? ['… more files, press f to browse'] : [])]);
@@ -396,386 +156,487 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, onExit }: App
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      clearTimeout(slow);
     };
-  }, [current?.key, version, view]);
+  }, [current?.key, scan.version, browse === null, theme]);
 
   useEffect(() => {
-    if (!browse || browse.entries) return;
+    if (!browse) return;
+    const level = currentLevel(browse);
+    if (level.entries) return;
     let cancelled = false;
-    const dir = browse.dirs[browse.dirs.length - 1];
-    (dir ? dirEntries(dir) : entrySizes(browse.target.paths)).then((entries) => {
-      if (!cancelled) setBrowse((b) => (b ? { ...b, entries } : b));
+    (level.dir ? dirEntries(level.dir) : entrySizes(browse.target.paths)).then((entries) => {
+      if (!cancelled) setBrowse((b) => (b ? withLevel(b, (l) => sortLevel({ ...l, entries }, sort)) : b));
     });
     return () => {
       cancelled = true;
     };
   }, [browse]);
 
+  useEffect(() => {
+    setBrowse((b) => (b ? { ...b, levels: b.levels.map((l) => sortLevel(l, sort)) } : b));
+  }, [sort]);
+
   const moveTo = (index: number) => {
     const next = Math.max(0, Math.min(rows.length - 1, index));
     cursorRef.current = next;
     setCursor(next);
   };
+  const moveBrowse = (to: (c: number) => number) => setBrowse((b) => (b ? moveCursor(b, to, listRows) : b));
 
-  const moveBrowse = (to: (cursor: number) => number) =>
-    setBrowse((b) => {
-      if (!b?.entries) return b;
-      const next = Math.max(0, Math.min(b.entries.length - 1, to(b.cursor)));
-      const visible = listHeight - 1;
-      const offset = next < b.offset ? next : next >= b.offset + visible ? next - visible + 1 : b.offset;
-      return { ...b, cursor: next, offset };
-    });
-
-  const toggle = (targets: Target[]) => {
-    const value = !targets.every((t) => t.selected);
-    targets.forEach((t) => (t.selected = value));
-    bump();
-  };
-
-  const applyAge = (days: number) => {
-    minAgeRef.current = days;
-    setMinAge(days);
-    for (const t of targetsRef.current) if (t.ageDays !== undefined) t.selected = preselect(t, ctx.recentDays, days);
-    bump();
+  const toggle = (list: Target[]) => {
+    const value = !list.every((t) => t.selected);
+    list.forEach((t) => (t.selected = value));
+    scan.bump();
   };
 
   const stepAge = (direction: 1 | -1) => {
     const age = minAgeRef.current;
     const index = AGE_STEPS.findIndex((d) => d >= age);
     const from = index < 0 ? AGE_STEPS.length - 1 : AGE_STEPS[index] === age ? index : direction > 0 ? index - 1 : index;
-    applyAge(AGE_STEPS[Math.max(0, Math.min(AGE_STEPS.length - 1, from + direction))]);
-  };
-
-  const openFiles = (target: Target) => {
-    const single = target.paths.length === 1 ? [target.paths[0]] : [];
-    setBrowse({ target, dirs: single, entries: null, cursor: 0, offset: 0 });
-    setView('files');
+    const days = AGE_STEPS[Math.max(0, Math.min(AGE_STEPS.length - 1, from + direction))];
+    minAgeRef.current = days;
+    setMinAge(days);
+    for (const t of scan.targets.current) if (t.ageDays !== undefined) t.selected = preselect(t, ctx.recentDays, days);
+    scan.bump();
+    say(days ? `Selected items older than ${days} days (${scan.targets.current.filter((t) => t.selected).length} selected).` : 'Age threshold off: items of any age are selected by their tag.');
   };
 
   const reveal = (key: string) => {
     if (key === 'root') return;
-    const node = ancestry(tree, key);
-    const category = node[1]?.key;
-    const plugin = node[2]?.key;
+    const chain = ancestry(tree, key);
+    const category = chain[1]?.key;
+    const plugin = chain[2]?.key;
     if (category) setCollapsed((s) => new Set([...s].filter((k) => k !== category)));
-    if (plugin && node.length > 3) setExpanded((s) => new Set(s).add(plugin));
+    if (plugin && chain.length > 3) setExpanded((s) => new Set(s).add(plugin));
     setPendingKey(key);
   };
 
-  const finishClean = () => {
-    targetsRef.current = targetsRef.current.filter((t) => !cleanedRef.current.has(t.id));
-    cleanedRef.current = new Set();
-    setView('list');
-    setBrowse(null);
-    setLog([]);
-    setCleanDone(false);
-    moveTo(cursor);
-    bump();
+  const openFiles = (target: Target) => {
+    setBrowse(openBrowse(target));
+    setFocus('list');
+  };
+  const closeFiles = () => setBrowse(null);
+  const leaveDir = () => setBrowse((b) => (b ? leave(b) : b));
+  const enterEntry = () => {
+    const entry = browse ? currentEntry(browse) : undefined;
+    if (entry?.isDir) setBrowse((b) => (b ? enter(b, entry) : b));
   };
 
-  useEffect(() => {
-    if (view !== 'clean') return;
-    const tools = missingTools(selected).filter((t) => install.has(t.bin));
-    runClean({ targets: selected, install: tools, uninstallAfter, hooks, useTrash }, (line) => setLog((l) => [...l, line])).then(({ freed, cleaned }) => {
-      cleaned.forEach((id) => cleanedRef.current.add(id));
-      setLog((l) => [...l, '', `Done. Freed about ${human(freed)}${useTrash ? ' once the Trash is emptied' : ''}. Press enter to go back.`]);
-      setCleanDone(true);
+  const openDialog = (next: Overlay) => {
+    setDialogOffset(0);
+    setOverlay(next);
+  };
+
+  const startClean = () => {
+    if (!selected.length) return say('Nothing is selected. Select items with space first.', 'warn');
+    const tools = missingTools(selected);
+    setInstall(new Set(tools.map((t) => t.bin)));
+    setToolCursor(0);
+    openDialog(tools.length ? 'tools' : 'review');
+  };
+
+  const runCleanup = () => {
+    const targetsToClean = [...selected];
+    openDialog('progress');
+    run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), uninstallAfter, hooks, useTrash }, (result) => {
+      result.cleaned.forEach((id) => cleanedRef.current.add(id));
+      const failed = result.steps.filter((s) => s.state === 'failed').length;
+      say(`Cleaned ${result.cleaned.size} of ${targetsToClean.length} item(s), freed about ${human(result.freed)}${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}.`, failed || result.aborted ? 'warn' : 'info');
     });
-  }, [view]);
-
-  const activeKey = view === 'files' ? browse?.entries?.[browse.cursor]?.path : current?.key;
-  const mapRoot = view === 'files' && browse ? filesMap(browse, colors.get(`t${browse.target.id}`) ?? '#5f87af') : tree;
-  const sunburstDepth = view === 'files' ? 1 : SUNBURST_DEPTH;
-  const treemapFocus = view === 'files' ? mapRoot : (ancestry(tree, activeKey ?? '').slice(-2, -1)[0] ?? tree);
-
-  const mapGrid = useMemo(() => {
-    if (!showMap) return [];
-    if (mapMode === 'treemap') return renderTreemap(treemapRects(treemapFocus, mapInner.w, mapInner.h), mapInner.w, mapInner.h, activeKey, (n) => human(n.size));
-    const focus = ancestry(mapRoot, activeKey ?? '').at(-1) ?? mapRoot;
-    const share = mapRoot.size ? `${Math.round((focus.size / mapRoot.size) * 100)}%` : '';
-    return renderSunburst(mapRoot, mapInner.w, mapInner.h, activeKey, [focus.label, human(focus.size), share], sunburstDepth);
-  }, [showMap, mapMode, mapRoot, activeKey, mapInner.w, mapInner.h]);
-
-  const keyAtMap = (event: MouseEvent): string | 'center' | null => {
-    const box = mapRef.current;
-    if (!box) return null;
-    const x = event.x - box.screenX - 1;
-    const y = event.y - box.screenY - 1;
-    if (mapMode === 'treemap') return rectAt(treemapRects(treemapFocus, mapInner.w, mapInner.h), x, y)?.node.key ?? null;
-    const hit = arcAtPixel(sunburstArcs(mapRoot, sunburstDepth), sunburstGeometry(mapInner.w, mapInner.h, sunburstDepth), x, y * 2);
-    return hit === 'center' ? 'center' : (hit?.node.key ?? null);
   };
 
-  const onMapClick = (event: MouseEvent) => {
-    const key = keyAtMap(event);
-    if (!key) return;
-    if (view === 'files' && browse?.entries) {
-      if (key === 'center') return leaveDir();
-      const index = browse.entries.findIndex((e) => e.path === key);
-      if (index === browse.cursor && browse.entries[index].isDir) return enterDir(browse.entries[index]);
-      return moveBrowse(() => index);
-    }
-    if (key === 'center') {
-      const parent = ancestry(tree, activeKey ?? '').slice(-2, -1)[0];
-      if (parent && parent.key !== 'root') reveal(parent.key);
+  const finishClean = () => {
+    scan.targets.current = scan.targets.current.filter((t) => !cleanedRef.current.has(t.id));
+    cleanedRef.current = new Set();
+    setOverlay(null);
+    setBrowse(null);
+    run.reset();
+    moveTo(cursorRef.current);
+    scan.bump();
+  };
+
+  const focusOrder: Focus[] = showMap ? ['list', 'preview', 'map'] : ['list', 'preview'];
+  const cycleFocus = (step: 1 | -1) => setFocus((f) => focusOrder[(focusOrder.indexOf(f) + step + focusOrder.length) % focusOrder.length]);
+
+  const currentRow = () => rows[Math.min(cursorRef.current, rows.length - 1)];
+
+  const mapStep = (action: Action) => {
+    if (browse) {
+      if (action === 'next') moveBrowse((c) => c + 1);
+      if (action === 'previous') moveBrowse((c) => c - 1);
+      if (action === 'parent') leaveDir();
+      if (action === 'open') enterEntry();
       return;
     }
+    const row = currentRow();
+    if (!row) return;
+    const chain = ancestry(tree, row.key);
+    const node = chain.at(-1);
+    const parent = chain.at(-2);
+    if ((action === 'next' || action === 'previous') && parent) {
+      const siblings = parent.children;
+      const index = siblings.findIndex((n) => n.key === row.key);
+      reveal(siblings[(index + (action === 'next' ? 1 : -1) + siblings.length) % siblings.length].key);
+    }
+    if (action === 'parent' && parent && parent.key !== 'root') reveal(parent.key);
+    if (action === 'open') {
+      if (row.kind === 'target') openFiles(row.target);
+      else if (node?.children[0]) reveal(node.children[0].key);
+    }
+  };
+
+  const onMapPick = (key: string | 'center') => {
+    if (browse) {
+      const entries = currentLevel(browse).entries ?? [];
+      if (key === 'center') return leaveDir();
+      const index = entries.findIndex((e) => e.path === key);
+      if (index < 0) return;
+      if (index === currentLevel(browse).cursor && entries[index].isDir) return enterEntry();
+      return moveBrowse(() => index);
+    }
+    if (key === 'center') return mapStep('parent');
     reveal(key);
   };
 
-  const enterDir = (entry: Entry) => setBrowse((b) => (b ? { ...b, dirs: [...b.dirs, entry.path], entries: null, cursor: 0, offset: 0 } : b));
-
-  const leaveDir = () => {
-    if (!browse) return;
-    const atRoot = browse.dirs.length === 0 || (browse.dirs.length === 1 && browse.target.paths.length === 1);
-    if (atRoot) {
-      setView('list');
-      setBrowse(null);
-      return;
+  const common = (action: Action): boolean => {
+    switch (action) {
+      case 'ageUp':
+        stepAge(1);
+        return true;
+      case 'ageDown':
+        stepAge(-1);
+        return true;
+      case 'focus':
+        cycleFocus(1);
+        return true;
+      case 'focusBack':
+        cycleFocus(-1);
+        return true;
+      case 'filter':
+        setFocus('list');
+        setFiltering(true);
+        return true;
+      case 'sort':
+        setSortCursor(SORT_KEYS.findIndex((k) => k.key === sort.key));
+        openDialog('sort');
+        return true;
+      case 'reverse':
+        setSort((s) => ({ ...s, reverse: !s.reverse }));
+        return true;
+      case 'map':
+        setMapMode((m) => (m === 'sunburst' ? 'treemap' : m === 'treemap' ? 'off' : 'sunburst'));
+        if (mapMode === 'treemap' && focus === 'map') setFocus('list');
+        return true;
+      case 'messages':
+        openDialog('messages');
+        return true;
+      case 'theme':
+        setThemeBefore(themeName);
+        openDialog('theme');
+        return true;
+      case 'trash':
+        setUseTrash((v) => !v);
+        say(useTrash ? 'Delete mode: items are removed permanently.' : 'Trash mode: deleted folders go to the Trash. Tool commands still run as usual.');
+        return true;
+      case 'clean':
+        startClean();
+        return true;
+      case 'rescan':
+        moveTo(0);
+        scan.rescan();
+        say('Rescanning…');
+        return true;
+      case 'help':
+        setHelpQuery('');
+        setHelpSearching(false);
+        openDialog('help');
+        return true;
+      case 'quit':
+        scan.abort();
+        onExit();
+        return true;
+      case 'cancel':
+        if (filter) setFilter('');
+        return true;
     }
-    setBrowse({ ...browse, dirs: browse.dirs.slice(0, -1), entries: null, cursor: 0, offset: 0 });
+    return false;
+  };
+
+  const scrollDialog = (action: Action): boolean => {
+    const steps: Partial<Record<Action, (o: number) => number>> = {
+      down: (o) => o + 1,
+      up: (o) => Math.max(0, o - 1),
+      pageDown: (o) => o + pageRows,
+      pageUp: (o) => Math.max(0, o - pageRows),
+      top: () => 0,
+      bottom: () => 100_000,
+    };
+    const step = steps[action];
+    if (step) setDialogOffset(step);
+    return Boolean(step);
+  };
+
+  const dispatch = (ctxName: Context, action: Action) => {
+    const row = currentRow();
+    switch (ctxName) {
+      case 'welcome':
+        setOverlay(null);
+        onSaveState?.({ welcomed: true });
+        return;
+      case 'filter':
+        if (action === 'confirm') setFiltering(false);
+        if (action === 'cancel') {
+          setFilter('');
+          setFiltering(false);
+        }
+        return;
+      case 'tools': {
+        const tools = missingTools(selected);
+        if (action === 'down') setToolCursor((c) => Math.min(tools.length, c + 1));
+        if (action === 'up') setToolCursor((c) => Math.max(0, c - 1));
+        if (action === 'toggle' && toolCursor === tools.length) setUninstallAfter((u) => !u);
+        else if (action === 'toggle') {
+          const bin = tools[toolCursor].bin;
+          setInstall((s) => (s.has(bin) ? new Set([...s].filter((b) => b !== bin)) : new Set(s).add(bin)));
+        }
+        if (action === 'all') setInstall((s) => (s.size === tools.length ? new Set() : new Set(tools.map((t) => t.bin))));
+        if (action === 'confirm') openDialog('review');
+        if (action === 'cancel') setOverlay(null);
+        return;
+      }
+      case 'review':
+        if (scrollDialog(action)) return;
+        if (action === 'confirm') runCleanup();
+        if (action === 'cancel') setOverlay(null);
+        return;
+      case 'failure':
+        if (action === 'retry' || action === 'skip' || action === 'skipAll' || action === 'abort') run.decide(action);
+        return;
+      case 'done':
+        finishClean();
+        return;
+      case 'help':
+        if (scrollDialog(action)) return;
+        if (action === 'search') setHelpSearching(true);
+        if (action === 'cancel') setOverlay(null);
+        return;
+      case 'helpSearch':
+        if (action === 'cancel') {
+          setHelpQuery('');
+          setHelpSearching(false);
+        }
+        if (action === 'confirm') setHelpSearching(false);
+        return;
+      case 'messages':
+        if (scrollDialog(action)) return;
+        if (action === 'cancel') setOverlay(null);
+        return;
+      case 'sort':
+        if (action === 'down') setSortCursor((c) => Math.min(SORT_KEYS.length - 1, c + 1));
+        if (action === 'up') setSortCursor((c) => Math.max(0, c - 1));
+        if (action === 'reverse') setSort((s) => ({ ...s, reverse: !s.reverse }));
+        if (action === 'confirm') {
+          setSort((s) => ({ ...s, key: SORT_KEYS[sortCursor].key }));
+          setOverlay(null);
+        }
+        if (action === 'cancel') setOverlay(null);
+        return;
+      case 'theme': {
+        const index = THEMES.findIndex((t) => t.name === themeName);
+        if (action === 'down' || action === 'up') setThemeName(THEMES[Math.max(0, Math.min(THEMES.length - 1, index + (action === 'down' ? 1 : -1)))].name);
+        if (action === 'confirm') {
+          onSaveState?.({ theme: themeName });
+          say(`Theme "${themeName}" saved.`);
+          setOverlay(null);
+        }
+        if (action === 'cancel') {
+          setThemeName(themeBefore);
+          setOverlay(null);
+        }
+        return;
+      }
+      case 'preview':
+        if (action === 'down') return setPreviewOffset((o) => Math.min(Math.max(0, previewLines.length - previewRows(previewHeight)), o + 1));
+        if (action === 'up') return setPreviewOffset((o) => Math.max(0, o - 1));
+        if (action === 'pageDown') return setPreviewOffset((o) => Math.min(Math.max(0, previewLines.length - previewRows(previewHeight)), o + previewRows(previewHeight)));
+        if (action === 'pageUp') return setPreviewOffset((o) => Math.max(0, o - previewRows(previewHeight)));
+        if (action === 'toggle') return browse ? toggle([browse.target]) : row && toggle(row.kind === 'target' ? [row.target] : row.targets);
+        common(action);
+        return;
+      case 'map':
+        if (action === 'next' || action === 'previous' || action === 'parent' || action === 'open') return mapStep(action);
+        if (action === 'toggle') return browse ? toggle([browse.target]) : row && toggle(row.kind === 'target' ? [row.target] : row.targets);
+        common(action);
+        return;
+      case 'files':
+        if (!browse) return;
+        if (action === 'down') return moveBrowse((c) => c + 1);
+        if (action === 'up') return moveBrowse((c) => c - 1);
+        if (action === 'pageDown') return moveBrowse((c) => c + listRows);
+        if (action === 'pageUp') return moveBrowse((c) => c - listRows);
+        if (action === 'top') return moveBrowse(() => 0);
+        if (action === 'bottom') return moveBrowse(() => Number.MAX_SAFE_INTEGER);
+        if (action === 'open') return enterEntry();
+        if (action === 'parent') return browse.levels.length > 1 ? leaveDir() : closeFiles();
+        if (action === 'back') return closeFiles();
+        if (action === 'toggle') return toggle([browse.target]);
+        common(action);
+        return;
+      case 'list': {
+        const c = cursorRef.current;
+        if (action === 'down') return moveTo(c + 1);
+        if (action === 'up') return moveTo(c - 1);
+        if (action === 'pageDown') return moveTo(c + listRows);
+        if (action === 'pageUp') return moveTo(c - listRows);
+        if (action === 'top') return moveTo(0);
+        if (action === 'bottom') return moveTo(rows.length - 1);
+        if (action === 'toggle' && row) {
+          toggle(row.kind === 'target' ? [row.target] : row.targets);
+          if (row.kind === 'target') moveTo(c + 1);
+          return;
+        }
+        if ((action === 'expand' || action === 'open') && row) {
+          if (row.kind === 'category') setCollapsed((s) => new Set([...s].filter((k) => k !== row.key)));
+          if (row.kind === 'plugin') setExpanded((s) => new Set(s).add(row.key));
+          if (row.kind === 'target' && action === 'open') openFiles(row.target);
+          return;
+        }
+        if (action === 'collapse' && row) {
+          if (row.kind === 'category') setCollapsed((s) => new Set(s).add(row.key));
+          if (row.kind === 'plugin') setExpanded((s) => new Set([...s].filter((k) => k !== row.key)));
+          if (row.kind === 'target') {
+            setExpanded((s) => new Set([...s].filter((k) => k !== row.parent)));
+            moveTo(rows.findIndex((r) => r.key === row.parent));
+          }
+          return;
+        }
+        if (action === 'all') {
+          const visible = rows.flatMap((r) => (r.kind === 'target' ? [r.target] : []));
+          return toggle(visible.length ? visible : groups.flatMap(([, plugins]) => plugins.flatMap(([, list]) => list)));
+        }
+        if (action === 'expandAll') return setExpanded((s) => (s.size ? new Set() : new Set(rows.filter((r) => r.kind === 'plugin').map((r) => r.key))));
+        common(action);
+        return;
+      }
+    }
   };
 
   const handleKey = (key: KeyEvent) => {
-    const char = key.sequence.length === 1 && !key.ctrl && !key.meta ? key.sequence : '';
-    const cursor = cursorRef.current;
-    const current = rows[Math.min(cursor, rows.length - 1)];
-    if (view === 'help') return setView(browse ? 'files' : 'list');
-    if (view === 'clean') {
-      if (cleanDone && (key.name === 'return' || key.name === 'escape' || char === 'q')) finishClean();
+    const token = keyToken(key);
+    const char = printable(key);
+    if (context === 'filter' || context === 'helpSearch') {
+      const action = resolve(context, token);
+      if (action) return dispatch(context, action);
+      const set = context === 'filter' ? setFilter : setHelpQuery;
+      if (token === 'backspace' || token === 'delete') set((q) => q.slice(0, -1));
+      else if (char) set((q) => q + char);
+      if (context === 'filter') moveTo(0);
+      else setDialogOffset(0);
       return;
     }
-    if (view === 'tools') {
-      const tools = missingTools(selected);
-      if (key.name === 'down' || char === 'j') setToolCursor((c) => Math.min(tools.length, c + 1));
-      else if (key.name === 'up' || char === 'k') setToolCursor((c) => Math.max(0, c - 1));
-      else if (char === ' ' && toolCursor === tools.length) setUninstallAfter((u) => !u);
-      else if (char === ' ') {
-        const bin = tools[toolCursor].bin;
-        setInstall((s) => (s.has(bin) ? new Set([...s].filter((b) => b !== bin)) : new Set(s).add(bin)));
-      } else if (char === 'a') setInstall((s) => (s.size === tools.length ? new Set() : new Set(tools.map((t) => t.bin))));
-      else if (key.name === 'return') {
-        setConfirmOffset(0);
-        setView('confirm');
-      } else if (char === 'n' || key.name === 'escape') setView(browse ? 'files' : 'list');
-      return;
-    }
-    if (view === 'confirm') {
-      if (char === 'y') setView('clean');
-      else if (char === 'n' || key.name === 'escape') setView(browse ? 'files' : 'list');
-      else if (key.name === 'down' || char === 'j') setConfirmOffset((o) => o + 1);
-      else if (key.name === 'up' || char === 'k') setConfirmOffset((o) => Math.max(0, o - 1));
-      else if (key.name === 'pagedown') setConfirmOffset((o) => o + listHeight);
-      else if (key.name === 'pageup') setConfirmOffset((o) => Math.max(0, o - listHeight));
-      return;
-    }
-    if (filtering) {
-      if (key.name === 'return') setFiltering(false);
-      else if (key.name === 'escape') {
-        setFilter('');
-        setFiltering(false);
-      } else if (key.name === 'backspace' || key.name === 'delete') setFilter((f) => f.slice(0, -1));
-      else if (char) setFilter((f) => f + char);
-      moveTo(0);
-      return;
-    }
-    if (char === '?') return setView('help');
-    if (char === 'm') return setMapMode((m) => (m === 'sunburst' ? 'treemap' : m === 'treemap' ? 'off' : 'sunburst'));
-    if (char === 'd' && selected.length) {
-      const tools = missingTools(selected);
-      setConfirmOffset(0);
-      setInstall(new Set(tools.map((t) => t.bin)));
-      setToolCursor(0);
-      return setView(tools.length ? 'tools' : 'confirm');
-    }
-    if (char === 'q') {
-      abortRef.current?.abort();
-      return onExit();
-    }
-    if (view === 'files' && browse) {
-      const entry = browse.entries?.[browse.cursor];
-      if (key.name === 'down' || char === 'j') moveBrowse((c) => c + 1);
-      else if (key.name === 'up' || char === 'k') moveBrowse((c) => c - 1);
-      else if (key.name === 'pagedown') moveBrowse((c) => c + listHeight);
-      else if (key.name === 'pageup') moveBrowse((c) => c - listHeight);
-      else if ((key.name === 'return' || key.name === 'right' || char === 'l') && entry?.isDir) enterDir(entry);
-      else if (key.name === 'left' || key.name === 'backspace' || char === 'h') leaveDir();
-      else if (key.name === 'escape' || char === 'f') {
-        setView('list');
-        setBrowse(null);
-      } else if (char === ' ') toggle([browse.target]);
-      return;
-    }
-    if (key.name === 'down' || char === 'j') moveTo(cursor + 1);
-    else if (key.name === 'up' || char === 'k') moveTo(cursor - 1);
-    else if (key.name === 'pagedown') moveTo(cursor + listHeight);
-    else if (key.name === 'pageup') moveTo(cursor - listHeight);
-    else if (key.name === 'home' || char === 'g') moveTo(0);
-    else if (key.name === 'end' || char === 'G') moveTo(rows.length - 1);
-    else if (char === ' ' && current) {
-      toggle(current.kind === 'target' ? [current.target] : current.targets);
-      if (current.kind === 'target') moveTo(cursor + 1);
-    } else if ((key.name === 'right' || key.name === 'return' || char === 'l' || char === 'f') && current) {
-      if (current.kind === 'category') setCollapsed((s) => new Set([...s].filter((k) => k !== current.key)));
-      if (current.kind === 'plugin') setExpanded((s) => new Set(s).add(current.key));
-      if (current.kind === 'target') openFiles(current.target);
-    } else if ((key.name === 'left' || char === 'h') && current) {
-      if (current.kind === 'category') setCollapsed((s) => new Set(s).add(current.key));
-      if (current.kind === 'plugin') setExpanded((s) => new Set([...s].filter((k) => k !== current.key)));
-      if (current.kind === 'target') {
-        setExpanded((s) => new Set([...s].filter((k) => k !== current.parent)));
-        moveTo(rows.findIndex((r) => r.key === current.parent));
-      }
-    } else if (char === ']') stepAge(1);
-    else if (char === '[') stepAge(-1);
-    else if (char === 'a') {
-      const visible = rows.flatMap((r) => (r.kind === 'target' ? [r.target] : []));
-      toggle(visible.length ? visible : targetsRef.current.filter((t) => matches(t, filter)));
-    } else if (char === 'e') setExpanded((s) => (s.size ? new Set() : new Set(rows.filter((r) => r.kind === 'plugin').map((r) => r.key))));
-    else if (char === '/') setFiltering(true);
-    else if (key.name === 'escape' && filter) setFilter('');
-    else if (char === 't') setUseTrash((v) => !v);
-    else if (char === 'r') {
-      setErrors(configErrors);
-      moveTo(0);
-      setGeneration((g) => g + 1);
-    }
+    const action = resolve(context, token);
+    if (action) dispatch(context, action);
   };
 
   useKeyboard(handleKey);
 
-  const header = (
-    <text wrapMode="none">
-      <strong fg="cyan">putzteufel</strong>
-      {`  ${targetsRef.current.length} found · ${selected.length} selected · ${human(sum(selected))} to free · `}
-      <span fg="cyan">{minAge ? `older than ${minAge}d` : 'any age'}</span>
-      {' · '}
-      <span fg={useTrash ? 'yellow' : 'red'}>{useTrash ? 'trash mode' : 'delete mode'}</span>
-      {scanning ? <span fg="cyan"> · scanning…</span> : null}
-      {errors.length ? <span fg="red">{` · ${errors.length} warning(s)`}</span> : null}
-    </text>
-  );
+  const browseEntry = browse ? currentEntry(browse) : undefined;
+  const previewLines: Line[] = browse
+    ? browseEntry
+      ? [`${tildify(browseEntry.path)}  ·  ${human(browseEntry.size)}  ·  ${browseEntry.isDir ? 'folder, enter opens it' : 'file'}`, ...impactLines(browse.target, ctx.recentDays, minAge, theme), 'space selects or deselects the whole item; it is removed as one unit']
+      : [...browse.target.commands.map((c) => `$ ${describeCommand(c)}`), ...browse.target.listed, ...impactLines(browse.target, ctx.recentDays, minAge, theme)]
+    : preview;
 
-  if (view === 'tools') {
-    const tools = missingTools(selected);
-    const usage = (bin: string) => selected.filter((t) => t.tool?.bin === bin);
+  if (width < MIN_SIZE.width || height < MIN_SIZE.height) {
     return (
-      <box flexDirection="column" height={height}>
-        {header}
-        <box flexDirection="column" height={height - 2} border borderStyle="rounded" borderColor="yellow" title=" native tools " padding={1}>
-          <text wrapMode="none">{fit('These items have their own cleanup tool, which is not installed.', width - 4)}</text>
-          <text wrapMode="none" fg={MUTED}>{fit('Checked tools are installed first and do the cleanup. Unchecked ones: their folders are deleted directly.', width - 4)}</text>
-          <text> </text>
-          {tools.map((t, i) => {
-            const items = usage(t.bin);
-            return (
-              <text key={t.bin} wrapMode="none" bg={i === toolCursor ? ACTIVE_BG : undefined}>
-                {`${install.has(t.bin) ? '[x]' : '[ ]'} `}
-                <strong>{t.bin.padEnd(14)}</strong>
-                <span fg="yellow">{`$ ${t.install}`.padEnd(36)}</span>
-                <span fg={MUTED}>{fit(`  then $ ${t.clean[0]?.run ?? ''}  ·  ${items.length} item(s), ${human(sum(items))}: ${[...new Set(items.map((x) => x.plugin))].join(', ')}`, Math.max(10, width - 60))}</span>
-              </text>
-            );
-          })}
-          <text> </text>
-          <text wrapMode="none" bg={toolCursor === tools.length ? ACTIVE_BG : undefined}>
-            {`${uninstallAfter ? '[x]' : '[ ]'} `}
-            {fit('Uninstall the tools installed here after the cleanup (only the formula; dependencies brew pulled in stay)', width - 10)}
-          </text>
-        </box>
-        <text fg={MUTED}>{fit('↑↓ move · space toggle · a all · enter review the cleanup · esc cancel', width)}</text>
-      </box>
+      <LookContext.Provider value={look}>
+        <TooSmall screen={screen} />
+      </LookContext.Provider>
     );
   }
 
-  if (view === 'confirm' || view === 'clean' || view === 'help') {
-    const lines: Line[] = view === 'confirm' ? confirmLines(selected, useTrash, install, uninstallAfter, hooks) : view === 'help' ? helpLines(ctx.recentDays) : log;
-    const visible = height - 4;
-    const start = view === 'confirm' ? Math.min(confirmOffset, Math.max(0, lines.length - visible)) : Math.max(0, lines.length - visible);
-    return (
-      <box flexDirection="column" height={height}>
-        {header}
-        <box flexDirection="column" height={height - 2} border borderStyle="rounded" borderColor={view === 'confirm' ? 'red' : view === 'help' ? '#444444' : 'cyan'}>
-          {lines.slice(start, start + visible).map((line, i) => (
-            <LineText key={i} line={line} width={width - 2} />
-          ))}
-        </box>
-        <text fg={MUTED}>{view === 'confirm' ? 'y confirm · n/esc cancel · ↑↓ scroll' : view === 'help' ? 'any key closes' : cleanDone ? 'enter back to list' : 'cleaning…'}</text>
-      </box>
-    );
-  }
+  const activeKey = browse ? browseEntry?.path : current?.key;
+  const mapRoot = browse ? browseMap(browse, colors.get(`t${browse.target.id}`) ?? theme.accent, theme.hues) : tree;
+  const treemapFocus = browse ? mapRoot : (ancestry(tree, activeKey ?? '').slice(-2, -1)[0] ?? tree);
+  const focusColor = modeColor(baseContext, theme);
+  const mapHidden = mapMode !== 'off' && !showMap;
+  const scanningShown = scan.scanning;
 
-  const listPane =
-    view === 'files' && browse ? (
-      <box flexDirection="column" height={listHeight}>
-        <text wrapMode="none" fg="cyan">
-          {fit(`${browse.target.selected ? '[x]' : '[ ]'} ${tildify(browse.dirs.at(-1) ?? browse.target.label)}  ·  ${human(browse.entries?.reduce((n, e) => n + e.size, 0))}`, listWidth)}
-        </text>
-        {!browse.entries ? <text fg={MUTED}>measuring…</text> : null}
-        {browse.entries?.length === 0 ? <text fg={MUTED}>{browse.target.paths.length ? 'empty' : 'no files: this item runs a tool command, see the preview'}</text> : null}
-        {(browse.entries ?? []).slice(browse.offset, browse.offset + listHeight - 1).map((e, i) => (
-          <text key={e.path} wrapMode="none" bg={browse.offset + i === browse.cursor ? ACTIVE_BG : undefined}>
-            <span fg={entryColor(browse.offset + i)}>● </span>
-            {`${human(e.size).padStart(7)}  `}
-            {fit(e.name + (e.isDir ? '/' : ''), listWidth - 14)}
-          </text>
-        ))}
-      </box>
-    ) : (
-      <box flexDirection="column" height={listHeight}>
-        {rows.length === 0 ? <text fg={MUTED}>{scanning ? 'Scanning…' : 'Nothing to clean.'}</text> : null}
-        {rows.slice(offset, offset + listHeight).map((row, i) => (
-          <RowLine key={row.key} row={row} active={offset + i === cursor} young={(t) => isYounger(t, ctx.recentDays, minAge)} width={listWidth} color={colors.get(row.key)} />
-        ))}
-      </box>
-    );
+  const listEmpty = scan.scanning
+    ? { message: 'Scanning for clutter…', detail: ctx.roots.map(tildify) }
+    : filter
+      ? { message: `No item matches “${filter}”.`, hint: { keys: 'esc', label: 'clear the filter' } }
+      : { message: 'Nothing to clean here.', detail: [`Scanned ${ctx.roots.map(tildify).join(', ') || 'no folders'} and the known cache locations.`], hint: { keys: 'r', label: 'rescan' } };
 
-  const browseEntry = browse?.entries?.[browse.cursor];
-  const previewLines: Line[] =
-    view === 'files' && browse
-      ? browseEntry
-        ? [`${tildify(browseEntry.path)}  ·  ${human(browseEntry.size)}  ·  ${browseEntry.isDir ? 'folder, enter opens it' : 'file'}`, ...impactLines(browse.target, ctx.recentDays, minAge), 'space selects or deselects the whole item; it is removed as one unit']
-        : [...browse.target.commands.map((c) => `$ ${describeCommand(c)}`), ...browse.target.listed, ...impactLines(browse.target, ctx.recentDays, minAge)]
-      : errors.length && !preview.length
-        ? errors.slice(-previewHeight + 1)
-        : preview;
-
-  const footer =
-    view === 'files'
-      ? '↑↓ move · enter open · ←/backspace up · space toggle item · m map · d clean · ? tags · esc/f back · q quit'
-      : `${filtering || filter ? `filter: ${filter}${filtering ? '▌' : ''}   ` : ''}↑↓ move · space toggle · enter/f files · [ ] age · m map · a all · / filter · t trash · d clean · r rescan · ? tags · q quit`;
+  const reviewText = overlay === 'review' ? reviewLines(selected, useTrash, install, uninstallAfter, hooks, theme) : [];
+  const help = overlay === 'help' ? helpLines(helpQuery, legendLines(ctx.recentDays, theme), theme) : [];
 
   return (
-    <box flexDirection="column" height={height}>
-      {header}
-      <box flexDirection="row" height={bodyHeight}>
-        <box flexDirection="column" width={listWidth}>
-          {listPane}
-          <box flexDirection="column" height={previewHeight} border={['top']} borderColor="#444444">
-            {previewLines.slice(0, previewHeight - 1).map((line, i) => (
-              <LineText key={i} line={line} width={listWidth} fg={i > 0 ? MUTED : undefined} />
-            ))}
+    <LookContext.Provider value={look}>
+      <box flexDirection="column" width={width} height={height} backgroundColor={theme.name === 'dark' ? undefined : theme.panel}>
+        <HeaderBar
+          context={context}
+          width={width}
+          segments={[
+            { text: 'putzteufel', color: theme.accent, priority: 'optional', bold: true },
+            { text: `${targets.length} found`, priority: 'essential' },
+            { text: `${selected.length} selected`, priority: 'essential' },
+            { text: `${human(sum(selected))} to free`, priority: 'normal' },
+            { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
+            { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
+            ...(scanningShown ? [{ text: 'scanning…', color: theme.accent, priority: 'essential' as const }] : []),
+            ...(mapHidden ? [{ text: `map needs ${MAP_MIN_WIDTH}+ columns, has ${width}`, color: theme.muted, priority: 'essential' as const }] : []),
+          ]}
+        />
+        <box flexDirection="row" height={bodyHeight}>
+          <box flexDirection="column" width={leftWidth}>
+            {browse ? (
+              <FilesPane browse={browse} width={leftWidth} height={listHeight} focused={focus === 'list'} focusColor={focusColor} sortLabel={describeSort(sort)} />
+            ) : (
+              <ListPane
+                rows={rows}
+                cursor={cursor}
+                offset={offset}
+                width={leftWidth}
+                height={listHeight}
+                focused={focus === 'list'}
+                focusColor={focusColor}
+                colors={colors}
+                highlights={highlights}
+                young={young}
+                bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(sum(selected))}`}
+                empty={listEmpty}
+              />
+            )}
+            <PreviewPane lines={previewLines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={focus === 'preview'} focusColor={focusColor} />
           </box>
+          {showMap ? (
+            <MapPane
+              mode={mapMode === 'treemap' ? 'treemap' : 'sunburst'}
+              root={mapRoot}
+              treemapFocus={treemapFocus}
+              activeKey={activeKey}
+              depth={browse ? 1 : SUNBURST_DEPTH}
+              width={mapWidth}
+              height={bodyHeight}
+              focused={focus === 'map'}
+              focusColor={focusColor}
+              onPick={onMapPick}
+            />
+          ) : null}
         </box>
-        {showMap ? (
-          <box
-            ref={mapRef}
-            width={mapWidth}
-            height={bodyHeight}
-            flexDirection="column"
-            border
-            borderStyle="rounded"
-            borderColor="#444444"
-            title={mapMode === 'sunburst' ? ' sunburst · m treemap ' : ' treemap · m hide '}
-            onMouseDown={onMapClick}
-          >
-            <CellRows grid={mapGrid} />
-          </box>
-        ) : null}
+        <MessageBar messages={messages} width={width} />
+        <Footer context={baseContext} width={width} prefix={filtering || filter ? `filter: ${filter}${filtering ? '▌' : ''}   ` : ''} />
+        {overlay === 'welcome' ? <WelcomeDialog screen={screen} /> : null}
+        {overlay === 'tools' ? <ToolsDialog screen={screen} tools={missingTools(selected)} selected={selected} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
+        {overlay === 'review' ? <ReviewDialog screen={screen} lines={reviewText} offset={dialogOffset} /> : null}
+        {overlay === 'progress' ? <ProgressDialog screen={screen} steps={run.steps} finishedOrder={run.finishedOrder} failure={run.failure} done={run.done} freed={run.freed} /> : null}
+        {overlay === 'help' ? <HelpDialog screen={screen} lines={help} offset={dialogOffset} query={helpQuery} searching={helpSearching} /> : null}
+        {overlay === 'messages' ? <MessagesDialog screen={screen} messages={messages} offset={dialogOffset} /> : null}
+        {overlay === 'sort' ? <SortDialog screen={screen} sort={sort} cursor={sortCursor} /> : null}
+        {overlay === 'theme' ? <ThemeDialog screen={screen} cursor={Math.max(0, THEMES.findIndex((t) => t.name === themeName))} /> : null}
       </box>
-      <text fg={MUTED} wrapMode="none">
-        {fit(footer, width)}
-      </text>
-    </box>
+    </LookContext.Provider>
   );
 }

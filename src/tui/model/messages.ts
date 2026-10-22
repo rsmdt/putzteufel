@@ -7,7 +7,7 @@ export interface Message {
 }
 
 export function message(text: string, level: Level = 'info'): Message {
-  return { text, level, at: Date.now() };
+  return { text: text.replace(/\s*\n\s*/g, ' · ').trim(), level, at: Date.now() };
 }
 
 export function clock(at: number): string {

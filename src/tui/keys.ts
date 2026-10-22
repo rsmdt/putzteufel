@@ -86,6 +86,7 @@ export const BINDINGS: Binding[] = [
   { action: 'expand', keys: ['right', 'l'], label: 'expand', section: 'Move', contexts: ['list'], display: '→/←', priority: 'optional' },
   { action: 'collapse', keys: ['left', 'h'], label: 'collapse', section: 'Move', contexts: ['list'], footer: false },
   { action: 'open', keys: ['return', 'f'], label: 'files', section: 'Files', contexts: ['list'], display: 'enter/f' },
+  { action: 'cancel', keys: ['escape'], label: 'clear the filter', section: 'Views', contexts: ['list', 'map', 'preview'], footer: false },
   { action: 'open', keys: ['return', 'right', 'l'], label: 'open', section: 'Files', contexts: ['files'], display: 'enter' },
   { action: 'parent', keys: ['left', 'backspace', 'h'], label: 'up', section: 'Files', contexts: ['files'], display: '←' },
   { action: 'back', keys: ['escape', 'f'], label: 'back', section: 'Files', contexts: ['files'], display: 'esc/f', priority: 'essential' },

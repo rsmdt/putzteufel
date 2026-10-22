@@ -1,59 +1,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, utimesSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, test } from 'bun:test';
-import { testRender } from '@opentui/react/test-utils';
+import { test } from 'bun:test';
 import { act } from 'react';
 import { chmodSync, readFileSync } from 'node:fs';
-import { builtinRules } from '../src/plugins/builtin/index.ts';
-import { type Plugin, forgetWhich } from '../src/core/index.ts';
+import { forgetWhich } from '../src/core/index.ts';
 import { SpecPlugin } from '../src/plugins/spec.ts';
-import { ProjectsPlugin } from '../src/plugins/projects.ts';
-import { App } from '../src/tui/App.tsx';
 import { tempDir, write } from './fixture.ts';
-
-let dispose: (() => void) | undefined;
-afterEach(() => dispose?.());
-
-async function start(root: string, width = 200, height = 30, plugins: Plugin[] = [new ProjectsPlugin(builtinRules)]) {
-  const ctx = { roots: [root], exclude: [], olderThan: 0, recentDays: 0 };
-  let exited = false;
-  const setup = await testRender(<App plugins={plugins} ctx={ctx} onExit={() => (exited = true)} />, { width, height });
-  dispose = () => setup.renderer.destroy();
-  const frame = () => setup.captureCharFrame();
-  const settle = async () => {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 40));
-    });
-    await setup.renderOnce();
-  };
-  const press = async (...keys: string[]) => {
-    for (const key of keys) {
-      await act(async () => setup.mockInput.pressKey(key));
-      await settle();
-    }
-  };
-  const waitFor = async (check: (f: string) => boolean, what: string) => {
-    for (let i = 0; i < 200; i++) {
-      await settle();
-      if (check(frame())) return;
-    }
-    assert.fail(`timed out waiting for ${what}:\n${frame()}`);
-  };
-  const burst = async (keys: string) => {
-    await act(async () => {
-      for (const key of keys) setup.mockInput.pressKey(key);
-    });
-    await settle();
-  };
-  return { setup, frame, press, burst, waitFor, exited: () => exited };
-}
-
-function twoProjects(): string {
-  const root = tempDir();
-  write(root, { 'alpha/package.json': '{}', 'alpha/node_modules/x/index.js': 'x', 'alpha/node_modules/big.bin': 'y'.repeat(50_000), 'bravo/package.json': '{}', 'bravo/node_modules/y': 'y' });
-  return root;
-}
+import { start, twoProjects } from './harness.tsx';
 
 test('select, confirm and clean through the TUI', async () => {
   const root = twoProjects();
@@ -137,9 +91,11 @@ test('impact tags are explained in the preview, the help screen and the review s
   await waitFor((f) => f.includes('If removed (rebuild): The next install or build recreates it.') && f.includes('npm/pnpm/yarn/bun install'), 'impact explanation');
   assert.ok(frame().includes('Selected by default: rebuild items are recreated without losing anything.'));
   await press('?');
-  await waitFor((f) => f.includes('What the tags mean') && f.includes('data loss') && f.includes('Never selected by default.'), 'help screen');
-  await press('x');
-  await waitFor((f) => f.includes('? tags'), 'help closed');
+  await waitFor((f) => f.includes('HELP') && f.includes('Every key, from the same list the footer uses') && f.includes('first row'), 'help screen lists every key');
+  await press('/', ...'tags', 'RETURN');
+  await waitFor((f) => f.includes('What the tags mean') && f.includes('data loss') && f.includes('Never selected by default.'), 'help search finds the tag legend');
+  await press('ESCAPE');
+  await waitFor((f) => !f.includes('HELP'), 'help closed');
   await press('d');
   await waitFor((f) => f.includes('Permanently delete 2 item(s)') && /2 rebuild\s+\S+\s+The next install/.test(f), 'review summary by impact');
   await press('n');
@@ -170,7 +126,7 @@ test('missing native tools are offered for install, with uninstall afterwards', 
   await waitFor((f) => f.includes('fakecache is not installed: the folders are deleted directly.') && f.includes('d offers to install it first (fakebrew install fakecache)'), 'tool status in preview');
 
   await press('d');
-  await waitFor((f) => f.includes('native tools') && f.includes('[x] fakecache') && f.includes('$ fakebrew install fakecache') && f.includes('[x] Uninstall the tools'), 'tools screen');
+  await waitFor((f) => f.includes('Native tools') && f.includes('[x] fakecache') && f.includes('$ fakebrew install fakecache') && f.includes('[x] Uninstall the tools'), 'tools screen');
   await press(' ', 'RETURN');
   await waitFor((f) => f.includes('fakecache not installed: the folders below are deleted directly'), 'unchecked tool means direct delete');
   assert.ok(!frame().includes('install:      $'));

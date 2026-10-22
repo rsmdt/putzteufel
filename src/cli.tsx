@@ -18,6 +18,7 @@ Fullscreen TUI that finds regenerable dev clutter and removes it, preferring eac
   --exclude GLOB        skip paths matching GLOB, repeatable
   --no-projects         skip the project scan
   --no-caches           skip cache plugins
+  --ascii               ASCII glyphs only, for terminals without Unicode block characters
   -h, --help`;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -32,6 +33,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       exclude: { type: 'string', multiple: true, default: [] },
       'no-projects': { type: 'boolean', default: false },
       'no-caches': { type: 'boolean', default: false },
+      ascii: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -82,9 +84,22 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
 
-  const [{ createCliRenderer }, { createRoot }, { App }] = await Promise.all([import('@opentui/core'), import('@opentui/react'), import('./tui/App.tsx')]);
+  const [{ createCliRenderer }, { createRoot }, { App }, { loadState, saveState }] = await Promise.all([import('@opentui/core'), import('@opentui/react'), import('./tui/App.tsx'), import('./config/state.ts')]);
+  const state = await loadState();
   const renderer = await createCliRenderer({ screenMode: 'alternate-screen', useMouse: true, exitOnCtrlC: true });
-  createRoot(renderer).render(<App plugins={plugins} ctx={ctx} configErrors={config.errors} hooks={config.settings.hooks} onExit={() => renderer.destroy()} />);
+  createRoot(renderer).render(
+    <App
+      plugins={plugins}
+      ctx={ctx}
+      configErrors={config.errors}
+      hooks={config.settings.hooks}
+      icons={values.ascii ? 'ascii' : (config.settings.icons ?? 'unicode')}
+      theme={state.theme ?? config.settings.theme}
+      firstRun={!state.welcomed}
+      onSaveState={(patch) => void saveState(patch)}
+      onExit={() => renderer.destroy()}
+    />,
+  );
   await renderer.closed;
   process.exit(0);
   return 0;

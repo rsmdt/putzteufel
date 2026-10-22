@@ -1,5 +1,5 @@
 import { fit } from '../map/layout.ts';
-import { fitHints, HINT_SEPARATOR } from '../hints.ts';
+import { fitHints, HINT_SEPARATOR, type HintPriority } from '../hints.ts';
 import { type Context, footerHints } from '../keys.ts';
 import { useLook } from '../look.ts';
 import { type Message, clock } from '../model/messages.ts';
@@ -42,6 +42,39 @@ export function ModePill({ context }: { context: Context }) {
     <strong fg={theme.panel} bg={modeColor(context, theme)}>
       {`${' '.repeat(Math.floor(pad / 2))}${label}${' '.repeat(Math.ceil(pad / 2))}`}
     </strong>
+  );
+}
+
+export interface Segment {
+  text: string;
+  priority: HintPriority;
+  color?: string;
+  bold?: boolean;
+}
+
+export function fitSegments(segments: Segment[], width: number): Segment[] {
+  const total = (list: Segment[]) => list.reduce((n, s) => n + s.text.length, 0) + Math.max(0, list.length - 1) * HINT_SEPARATOR.length;
+  const kept = [...segments];
+  for (const priority of ['optional', 'normal'] as HintPriority[]) {
+    for (let i = kept.length - 1; i >= 0 && total(kept) > width; i--) if (kept[i].priority === priority) kept.splice(i, 1);
+  }
+  return kept;
+}
+
+export function HeaderBar({ context, width, segments }: { context: Context; width: number; segments: Segment[] }) {
+  const { theme } = useLook();
+  const shown = fitSegments(segments, width - PILL_WIDTH - 2);
+  return (
+    <text wrapMode="none" fg={theme.text}>
+      <ModePill context={context} />
+      {' '}
+      {shown.map((s, i) => (
+        <span key={i}>
+          {i ? <span fg={theme.border}>{HINT_SEPARATOR}</span> : null}
+          {s.bold ? <strong fg={s.color}>{s.text}</strong> : <span fg={s.color}>{s.text}</span>}
+        </span>
+      ))}
+    </text>
   );
 }
 

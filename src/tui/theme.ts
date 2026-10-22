@@ -67,8 +67,6 @@ export const THEMES: Theme[] = [
 
 export type IconSet = 'unicode' | 'ascii' | 'nerd';
 
-export const ICON_SETS: IconSet[] = ['unicode', 'ascii', 'nerd'];
-
 export interface Icons {
   swatch: string;
   running: string;
