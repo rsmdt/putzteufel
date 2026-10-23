@@ -8,7 +8,7 @@ import { tempDir, write } from './fixture.ts';
 const target = (fields: Partial<Target>): Target => ({
   id: 1,
   plugin: 'test',
-  category: 'test',
+  group: 'test',
   label: 'test',
   paths: [],
   sizePaths: [],

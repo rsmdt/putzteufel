@@ -3,15 +3,15 @@ import { afterEach } from 'bun:test';
 import { testRender } from '@opentui/react/test-utils';
 import { act } from 'react';
 import type { Plugin } from '../src/core/index.ts';
-import { builtinRules } from '../src/plugins/builtin/index.ts';
-import { ProjectsPlugin } from '../src/plugins/projects.ts';
+import { builtinPlugins } from '../src/plugins/index.ts';
+import { projectsScanner } from '../src/engine/build.ts';
 import { App, type AppProps } from '../src/tui/App.tsx';
 import { tempDir, write } from './fixture.ts';
 
 let dispose: (() => void) | undefined;
 afterEach(() => dispose?.());
 
-export async function start(root: string, width = 200, height = 30, plugins: Plugin[] = [new ProjectsPlugin(builtinRules)], props: Partial<AppProps> = {}) {
+export async function start(root: string, width = 200, height = 30, plugins: Plugin[] = [projectsScanner(builtinPlugins)], props: Partial<AppProps> = {}) {
   const ctx = { roots: [root], exclude: [], olderThan: 0, recentDays: 0 };
   let exited = false;
   const setup = await testRender(<App plugins={plugins} ctx={ctx} onExit={() => (exited = true)} {...props} />, { width, height });

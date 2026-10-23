@@ -2,9 +2,7 @@ import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Emit,
-  type Hooks,
   type Plugin,
-  type Impact,
   type ScanContext,
   type Target,
   type TargetDraft,
@@ -17,23 +15,7 @@ import {
   which,
   wildcard,
 } from '../core/index.ts';
-
-export interface PluginSpec {
-  name: string;
-  category?: string;
-  description?: string;
-  paths?: string[];
-  exclude?: string[];
-  list?: string;
-  clean?: string;
-  sizePaths?: string[];
-  requires?: string[];
-  impact?: Impact;
-  tool?: { bin: string; install?: string; uninstall?: string };
-  hooks?: Hooks;
-  fallback?: boolean;
-  scan?: (ctx: ScanContext) => Promise<TargetDraft[]> | TargetDraft[];
-}
+import type { ItemSpec, Owner } from './define.ts';
 
 export async function expand(pattern: string): Promise<string[]> {
   const absolute = path.resolve(expandHome(pattern));
@@ -60,17 +42,22 @@ async function expandAll(patterns: string[] = []): Promise<string[]> {
   return (await Promise.all(patterns.map(expand))).flat();
 }
 
-export class SpecPlugin implements Plugin {
+export class ItemPlugin implements Plugin {
   name: string;
-  category: string;
+  group: string;
+  item: string;
   description?: string;
   fallback: boolean;
   tool?: { bin: string; install?: string };
 
-  constructor(private spec: PluginSpec) {
-    this.name = spec.name;
+  constructor(
+    private spec: ItemSpec,
+    owner: Owner,
+  ) {
+    this.name = owner.plugin;
+    this.group = owner.group;
+    this.item = spec.name;
     this.tool = spec.tool;
-    this.category = spec.category ?? 'Custom';
     this.description = spec.description;
     this.fallback = spec.fallback ?? false;
   }
@@ -84,8 +71,9 @@ export class SpecPlugin implements Plugin {
     const impact = spec.impact ?? 'regenerates';
     const note = spec.description;
     const hooks = spec.hooks;
+    const item = this.item;
     if (spec.scan) {
-      for (const draft of await spec.scan(ctx)) emit({ impact, note, hooks, ...draft });
+      for (const draft of await spec.scan(ctx)) emit({ impact, note, hooks, item, ...draft });
       return;
     }
     const skip = [...(spec.exclude ?? []), ...ctx.exclude];
@@ -109,7 +97,7 @@ export class SpecPlugin implements Plugin {
     const tool = spec.tool ? { ...spec.tool, installed, broken, clean } : undefined;
     const commands = installed ? clean : [];
     if (!spec.list && !spec.clean) {
-      for (const p of matched) emit({ label: p, paths: [p], impact, note, hooks });
+      for (const p of matched) emit({ label: p, paths: [p], impact, note, hooks, item });
       return;
     }
     const lines = (output ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
@@ -122,7 +110,7 @@ export class SpecPlugin implements Plugin {
     }
     const paths = !spec.tool ? [...matched, ...listedPaths] : spec.list && installed ? listedPaths : matched;
     if (!paths.length && !listed.length) return;
-    emit({ label: spec.name, paths, listed, commands, tool, hooks, sizePaths: await expandAll(spec.sizePaths), impact, note });
+    emit({ label: spec.name, paths, listed, commands, tool, hooks, item, sizePaths: await expandAll(spec.sizePaths), impact, note });
   }
 
   async measure(target: Target): Promise<void> {

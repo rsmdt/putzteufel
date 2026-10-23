@@ -5,7 +5,7 @@ import { test } from 'bun:test';
 import { act } from 'react';
 import { chmodSync, readFileSync } from 'node:fs';
 import { forgetWhich } from '../src/core/index.ts';
-import { SpecPlugin } from '../src/plugins/spec.ts';
+import { singleItem } from '../src/engine/build.ts';
 import { tempDir, write } from './fixture.ts';
 import { start, twoProjects } from './harness.tsx';
 
@@ -16,7 +16,7 @@ test('select, confirm and clean through the TUI', async () => {
   await waitFor((f) => f.includes('2/2') && !f.includes('scanning'), 'scan');
   await press('/', ...'bravo', 'RETURN');
   await waitFor((f) => f.includes(path.join(root, 'bravo')), 'filtered row');
-  await press('j', 'j', ' ');
+  await press('j', 'j', 'j', ' ');
   await waitFor((f) => f.includes('1 selected'), 'deselect');
 
   await press('d');
@@ -37,7 +37,7 @@ test('the file browser lists what an item contains before anything is removed', 
   const root = twoProjects();
   const { press, waitFor } = await start(root);
   await waitFor((f) => f.includes('2/2') && !f.includes('scanning'), 'scan');
-  await press('j', 'RETURN', 'j');
+  await press('j', 'j', 'RETURN', 'j');
   await waitFor((f) => f.includes(path.join(root, 'alpha')), 'expanded plugin');
   await press('f');
   await waitFor((f) => f.includes('big.bin') && f.includes('x/'), 'file listing');
@@ -71,7 +71,7 @@ test('the map shows a sunburst, toggles to a treemap, and clicks move the cursor
   assert.ok(/[▀▄]/.test(frame()));
   await press('m');
   await waitFor((f) => f.includes('treemap · m hide'), 'treemap');
-  await press('j', 'RETURN');
+  await press('j', 'j', 'RETURN');
   await waitFor((f) => f.includes(path.join(root, 'alpha')), 'expanded');
   const mapLeft = 140 - Math.floor(140 * 0.42);
   await act(async () => setup.mockMouse.click(mapLeft + 3, 5));
@@ -87,7 +87,7 @@ test('impact tags are explained in the preview, the help screen and the review s
   const { frame, press, waitFor } = await start(root);
   await waitFor((f) => f.includes('2/2') && !f.includes('scanning'), 'scan');
   assert.ok(frame().includes(' rebuild'));
-  await press('j', 'RETURN', 'j');
+  await press('j', 'j', 'RETURN', 'j');
   await waitFor((f) => f.includes('If removed (rebuild): The next install or build recreates it.') && f.includes('npm/pnpm/yarn/bun install'), 'impact explanation');
   assert.ok(frame().includes('Selected by default: rebuild items are recreated without losing anything.'));
   await press('?');
@@ -112,9 +112,9 @@ test('missing native tools are offered for install, with uninstall afterwards', 
   chmodSync(path.join(bin, 'fakebrew'), 0o755);
   process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
   forgetWhich();
-  const plugin = new SpecPlugin({
+  const plugin = singleItem({
     name: 'Fake cache',
-    category: 'Test',
+    group: 'Test',
     tool: { bin: 'fakecache', install: 'fakebrew install fakecache', uninstall: 'fakebrew uninstall fakecache' },
     paths: [`${root}/cache/fakecache`],
     list: 'fakecache dir',
@@ -122,7 +122,7 @@ test('missing native tools are offered for install, with uninstall afterwards', 
   });
   const { frame, press, waitFor } = await start(root, 200, 30, [plugin]);
   await waitFor((f) => f.includes('1/1') && !f.includes('scanning'), 'scan');
-  await press('j');
+  await press('j', 'j');
   await waitFor((f) => f.includes('fakecache is not installed: the folders are deleted directly.') && f.includes('d offers to install it first (fakebrew install fakecache)'), 'tool status in preview');
 
   await press('d');

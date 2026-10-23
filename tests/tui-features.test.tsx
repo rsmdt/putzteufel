@@ -3,9 +3,9 @@ import path from 'node:path';
 import { test } from 'bun:test';
 import { act } from 'react';
 import { loadState, saveState, statePath } from '../src/config/state.ts';
-import { builtinRules } from '../src/plugins/builtin/index.ts';
-import { ProjectsPlugin } from '../src/plugins/projects.ts';
-import { SpecPlugin } from '../src/plugins/spec.ts';
+import { builtinPlugins } from '../src/plugins/index.ts';
+import { projectsScanner } from '../src/engine/build.ts';
+import { singleItem } from '../src/engine/build.ts';
 import { tempDir, write } from './fixture.ts';
 import { start, twoProjects } from './harness.tsx';
 
@@ -23,8 +23,8 @@ test('O1 footer hints shorten by priority at 80 columns and keep the essential o
 
 test('O3 warnings go to the message bar and w opens the message log', async () => {
   const root = twoProjects();
-  const broken = new SpecPlugin({ name: 'Broken lister', category: 'Test', list: 'echo boom >&2; exit 3' });
-  const { frame, press, waitFor } = await start(root, 160, 30, [new ProjectsPlugin(builtinRules), broken]);
+  const broken = singleItem({ name: 'Broken lister', group: 'Test', list: 'echo boom >&2; exit 3' });
+  const { frame, press, waitFor } = await start(root, 160, 30, [projectsScanner(builtinPlugins), broken]);
   await waitFor((f) => ready(f) && f.includes('Broken lister: Command failed'), 'warning in the message bar');
   await press('w');
   await waitFor((f) => f.includes('Messages (1)') && f.includes('warn') && f.includes('boom'), 'message log');
@@ -42,7 +42,9 @@ test('O4 tab moves focus to the preview and the map, and arrows walk the map', a
   await press('TAB');
   await waitFor((f) => f.includes('MAP') && f.includes('←→ slices'), 'map focused');
   await press('ARROW_DOWN');
-  await waitFor((f) => f.includes('Node: 2/2'), 'into the Node group');
+  await waitFor((f) => f.includes('JavaScript: 2/2'), 'into the JavaScript ecosystem');
+  await press('ARROW_DOWN');
+  await waitFor((f) => f.includes('Node: 2/2'), 'into the Node plugin');
   await press('ARROW_DOWN');
   await waitFor((f) => f.includes(`${path.join(root, 'alpha')}  ·`), 'into the largest item');
   await press('ARROW_RIGHT');
@@ -69,8 +71,8 @@ test('O5 O12 O13 the mode pill, fuzzy filter and a designed empty state', async 
 test('O6 O7 the progress panel shows each step and a failed item asks to retry, skip or abort', async () => {
   const root = tempDir();
   write(root, { 'good/a': 'x', 'bad/b': 'y' });
-  const good = new SpecPlugin({ name: 'Good', category: 'Test', paths: [path.join(root, 'good')], clean: `rm -rf "${path.join(root, 'good')}"` });
-  const bad = new SpecPlugin({ name: 'Bad', category: 'Test', paths: [path.join(root, 'bad')], clean: 'echo nope >&2; exit 7' });
+  const good = singleItem({ name: 'Good', group: 'Test', paths: [path.join(root, 'good')], clean: `rm -rf "${path.join(root, 'good')}"` });
+  const bad = singleItem({ name: 'Bad', group: 'Test', paths: [path.join(root, 'bad')], clean: 'echo nope >&2; exit 7' });
   const { frame, press, waitFor } = await start(root, 160, 32, [good, bad]);
   await waitFor((f) => f.includes('2 found') && !f.includes('scanning'), 'scan');
   await press('d');
@@ -90,7 +92,7 @@ test('O8 going up in the file browser lands on the folder you came from', async 
   const root = twoProjects();
   const { press, waitFor } = await start(root);
   await waitFor(ready, 'scan');
-  await press('j', 'RETURN', 'j', 'f');
+  await press('j', 'j', 'RETURN', 'j', 'f');
   await waitFor((f) => f.includes('big.bin') && f.includes('x/'), 'files');
   await press('j', 'RETURN');
   await waitFor((f) => f.includes('index.js') && f.includes('FILES'), 'inside x');
@@ -102,8 +104,8 @@ test('O9 O10 sort picker and reverse, shown in the frame titles', async () => {
   const root = twoProjects();
   const { frame, press, waitFor } = await start(root);
   await waitFor(ready, 'scan');
-  await press('j', 'RETURN');
-  await waitFor((f) => f.includes(path.join(root, 'alpha')) && f.includes('Items 2/4') && f.includes('size ↓ · 2 selected'), 'titles');
+  await press('j', 'j', 'RETURN');
+  await waitFor((f) => f.includes(path.join(root, 'alpha')) && f.includes('Items 3/5') && f.includes('size ↓ · 2 selected'), 'titles');
   await press('o');
   await waitFor((f) => f.includes('SORT') && f.includes('Name'), 'sort picker');
   await press('j', 'j', 'RETURN');
@@ -171,5 +173,42 @@ test('O16 the theme picker previews live, restores on esc and saves on enter; as
   const ascii = await start(twoProjects(), 160, 30, undefined, { icons: 'ascii' });
   await ascii.waitFor(ready, 'scan');
   await act(async () => undefined);
-  assert.ok(ascii.frame().includes('* Projects') && !ascii.frame().includes('●') && !/[▀▄]/.test(ascii.frame()));
+  assert.ok(ascii.frame().includes('* JavaScript') && !ascii.frame().includes('●') && !/[▀▄]/.test(ascii.frame()));
+});
+
+test('a spinner at the top left runs while scanning and turns into a check when done', async () => {
+  const root = tempDir();
+  write(root, { 'slow/a': 'x' });
+  const slow = singleItem({ name: 'Slow', group: 'Test', list: `sleep 1; echo ${path.join(root, 'slow')}`, clean: 'true' });
+  const { frame, waitFor } = await start(root, 160, 30, [slow]);
+  await waitFor((f) => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /.test(lines(f)[0]), 'spinner while scanning');
+  await waitFor((f) => lines(f)[0].startsWith('✓ ') && f.includes('1 found'), 'check when done');
+  assert.ok(!lines(frame())[0].includes('scanning'));
+});
+
+test('a folder two plugins claim is listed under both, counted once and cleaned once', async () => {
+  const root = tempDir();
+  const shared = path.join(root, 'cache/tool');
+  write(root, { 'cache/tool/blob': 'x'.repeat(40_000), 'cache/other/b': 'y' });
+  const journal = path.join(root, 'journal');
+  const tool = singleItem({ name: 'Tool', group: 'Test', list: `echo ${shared}`, clean: `echo tool >> "${journal}"; rm -rf "${shared}"` });
+  const generic = singleItem({ name: 'Generic', group: 'Test', paths: [`${root}/cache/*`], fallback: true });
+  const { frame, press, waitFor } = await start(root, 180, 34, [tool, generic]);
+  await waitFor((f) => f.includes('3 found') && lines(f)[0].startsWith('✓'), 'scan');
+  await press('e');
+  await waitFor((f) => f.includes('also: Generic') && f.includes('also: Tool'), 'both rows tagged');
+  const header = lines(frame())[0];
+  await press('a');
+  await press('a');
+  await waitFor((f) => f.includes('3 selected'), 'all selected');
+  const toFree = /([\d.]+K) to free/.exec(lines(frame())[0])![1];
+  assert.ok(Number.parseFloat(toFree) < 90, `${toFree} counts the shared folder once (${header})`);
+  await press('j', 'j', 'j');
+  await waitFor((f) => f.includes('Also touched by'), 'preview explains the overlap');
+  await press('d');
+  await waitFor((f) => f.includes('lie inside another selected item'), 'review mentions it');
+  await press('y');
+  await waitFor((f) => f.includes('Done.'), 'cleaned');
+  assert.ok(frame().includes('cleaned there'));
+  assert.equal((await Bun.file(journal).text()).trim(), 'tool');
 });

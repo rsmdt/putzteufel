@@ -1,11 +1,13 @@
 import path from 'node:path';
-import { type Target, human, tildify } from '../../core/index.ts';
+import { SECTIONS, type Target, human, sectionOf, tildify } from '../../core/index.ts';
+import { uniqueSize } from '../../engine/overlap.ts';
 import { bestMatch } from '../fuzzy.ts';
 import { type MapNode, categoryColor } from '../map/layout.ts';
 import { type Sort, groupView, sortBy, targetView } from '../sort.ts';
 
 export type Row =
-  | { kind: 'category'; key: string; name: string; targets: Target[] }
+  | { kind: 'section'; key: string; name: string; targets: Target[] }
+  | { kind: 'group'; key: string; name: string; targets: Target[] }
   | { kind: 'plugin'; key: string; name: string; targets: Target[] }
   | { kind: 'target'; key: string; target: Target; parent: string };
 
@@ -25,7 +27,7 @@ export function box(targets: Target[]): string {
 
 export function stats(targets: Target[]): string {
   const selected = targets.filter((t) => t.selected);
-  return `${selected.length}/${targets.length} · ${human(sum(selected))} of ${human(sum(targets))}`;
+  return `${selected.length}/${targets.length} · ${human(uniqueSize(selected))} of ${human(uniqueSize(targets))}`;
 }
 
 export function groupTargets(targets: Target[], filter: string, sort: Sort): Filtered {
@@ -33,28 +35,37 @@ export function groupTargets(targets: Target[], filter: string, sort: Sort): Fil
   const categories = new Map<string, Map<string, Target[]>>();
   for (const t of targets) {
     if (filter) {
-      const hit = bestMatch([tildify(t.label), t.plugin, t.category, ...t.paths], filter);
+      const hit = bestMatch([tildify(t.label), t.plugin, t.group, t.item ?? '', ...t.paths], filter);
       if (!hit) continue;
       if (hit.field === 0) highlights.set(`t${t.id}`, hit.match.positions);
-      if (hit.field === 1) highlights.set(`${t.category}/${t.plugin}`, hit.match.positions);
+      if (hit.field === 1) highlights.set(`${t.group}/${t.plugin}`, hit.match.positions);
     }
-    const plugins = categories.get(t.category) ?? new Map<string, Target[]>();
-    categories.set(t.category, plugins);
+    const plugins = categories.get(t.group) ?? new Map<string, Target[]>();
+    categories.set(t.group, plugins);
     plugins.set(t.plugin, [...(plugins.get(t.plugin) ?? []), t]);
   }
-  const ordered = sortBy([...categories.entries()], sort, ([name, plugins]) => groupView(name, [...plugins.values()].flat()));
-  const projectsFirst = [...ordered.filter(([name]) => name === 'Projects'), ...ordered.filter(([name]) => name !== 'Projects')];
-  const groups: Groups = projectsFirst.map(([category, plugins]) => [
+  const sorted = sortBy([...categories.entries()], sort, ([name, plugins]) => groupView(name, [...plugins.values()].flat()));
+  const ordered = SECTIONS.flatMap((section) => sorted.filter(([name]) => sectionOf(name) === section));
+  const groups: Groups = ordered.map(([category, plugins]) => [
     category,
     sortBy([...plugins.entries()], sort, ([name, list]) => groupView(name, list)).map(([plugin, list]) => [plugin, sortBy(list, sort, targetView)] as [string, Target[]]),
   ]);
   return { groups, highlights };
 }
 
+export const sectionKey = (group: string) => `section:${sectionOf(group)}`;
+
 export function buildRows(groups: Groups, filter: string, collapsed: Set<string>, expanded: Set<string>): Row[] {
   const rows: Row[] = [];
+  let section = '';
   for (const [category, plugins] of groups) {
-    rows.push({ kind: 'category', key: category, name: category, targets: plugins.flatMap(([, list]) => list) });
+    if (sectionOf(category) !== section) {
+      section = sectionOf(category);
+      const key = sectionKey(category);
+      rows.push({ kind: 'section', key, name: section, targets: groups.filter(([g]) => sectionOf(g) === section).flatMap(([, ps]) => ps.flatMap(([, list]) => list)) });
+    }
+    if (collapsed.has(sectionKey(category))) continue;
+    rows.push({ kind: 'group', key: category, name: category, targets: plugins.flatMap(([, list]) => list) });
     if (collapsed.has(category)) continue;
     for (const [plugin, list] of plugins) {
       const key = `${category}/${plugin}`;
@@ -66,21 +77,23 @@ export function buildRows(groups: Groups, filter: string, collapsed: Set<string>
   return rows;
 }
 
-export function buildMap(groups: Groups, hues?: number[]): MapNode {
+export function buildMap(groups: Groups, hues?: number[], covered: Map<number, Target> = new Map()): MapNode {
+  const size = (t: Target) => (covered.has(t.id) ? 0 : (t.size ?? 0));
+  const total = (list: Target[]) => list.reduce((n, t) => n + size(t), 0);
   const categories = groups.map(([category, plugins], ci) => {
     const pluginNodes = plugins.map(([plugin, list], pi) => {
       const targetNodes = list.map((t, ti) => ({
         key: `t${t.id}`,
         label: tildify(t.label),
-        size: t.size ?? 0,
+        size: size(t),
         color: categoryColor(ci, 2, ti, hues),
         dim: !t.selected,
         children: [],
       }));
-      return { key: `${category}/${plugin}`, label: plugin, size: sum(list), color: categoryColor(ci, 1, pi, hues), dim: !list.some((t) => t.selected), children: targetNodes };
+      return { key: `${category}/${plugin}`, label: plugin, size: total(list), color: categoryColor(ci, 1, pi, hues), dim: !list.some((t) => t.selected), children: targetNodes };
     });
     const all = plugins.flatMap(([, list]) => list);
-    return { key: category, label: category, size: sum(all), color: categoryColor(ci, 0, 0, hues), dim: !all.some((t) => t.selected), children: pluginNodes };
+    return { key: category, label: category, size: total(all), color: categoryColor(ci, 0, 0, hues), dim: !all.some((t) => t.selected), children: pluginNodes };
   });
   return { key: 'root', label: 'Everything', size: categories.reduce((n, c) => n + c.size, 0), color: '#ffffff', dim: false, children: categories };
 }

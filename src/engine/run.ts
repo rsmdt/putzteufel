@@ -1,4 +1,5 @@
 import { type Command, type Hooks, type Target, type Tool, cleanTarget, forgetWhich, shell, tildify, which } from '../core/index.ts';
+import { coveredIn } from './overlap.ts';
 
 export const INSTALL_TIMEOUT = 30 * 60_000;
 
@@ -116,6 +117,7 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     else update(id, 'failed', `finished, but ${tool.bin} is still not on PATH`);
   }
 
+  const covered = coveredIn(plan.targets);
   let skipAll = false;
   const groups = new Map<string, Target[]>();
   for (const t of plan.targets) groups.set(t.plugin, [...(groups.get(t.plugin) ?? []), t]);
@@ -129,6 +131,11 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     for (const t of targets) {
       if (result.aborted) break;
       const id = `item:${t.id}`;
+      const cover = covered.get(t.id);
+      if (cover) {
+        update(id, 'skipped', `inside ${cover.plugin} ${tildify(cover.label)}, cleaned there`);
+        continue;
+      }
       if (t.tool && plan.install.some((x) => x.bin === t.tool!.bin) && !installed.has(t.tool.bin)) {
         update(id, 'skipped', `${t.tool.bin} could not be installed`);
         continue;

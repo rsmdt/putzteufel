@@ -22,7 +22,8 @@ export interface Hooks {
 export interface Target {
   id: number;
   plugin: string;
-  category: string;
+  item?: string;
+  group: string;
   label: string;
   paths: string[];
   sizePaths: string[];
@@ -35,10 +36,11 @@ export interface Target {
   size?: number;
   ageDays?: number;
   project?: string;
+  fallback?: boolean;
   selected: boolean;
 }
 
-export type TargetDraft = Partial<Omit<Target, 'id' | 'category' | 'selected'>> & { label: string };
+export type TargetDraft = Partial<Omit<Target, 'id' | 'selected'>> & { label: string };
 
 export interface ScanContext {
   roots: string[];
@@ -52,7 +54,7 @@ export type Emit = (draft: TargetDraft) => void;
 
 export interface Plugin {
   name: string;
-  category: string;
+  group: string;
   description?: string;
   fallback?: boolean;
   tool?: { bin: string; install?: string };

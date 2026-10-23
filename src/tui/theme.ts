@@ -76,6 +76,7 @@ export interface Icons {
   skipped: string;
   barFull: string;
   barEmpty: string;
+  spinner: string[];
   caps: { info: string; warn: string; error: string };
   map: MapGlyphs;
   category: (name: string) => string;
@@ -90,20 +91,26 @@ const UNICODE: Icons = {
   skipped: '↷',
   barFull: '█',
   barEmpty: '░',
+  spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
   caps: { info: '▎', warn: '▌', error: '▊' },
   map: BLOCK_GLYPHS,
   category: () => '',
 };
 
 const NERD_CATEGORIES: Record<string, string> = {
-  Projects: '\u{f07b}',
-  'Package managers': '\u{f487}',
-  Toolchains: '\u{f0ad}',
-  'Browsers, models & test runners': '\u{f059f}',
+  JavaScript: '\u{e74e}',
+  Python: '\u{e73c}',
+  Rust: '\u{e7a8}',
+  Go: '\u{e627}',
+  Java: '\u{e738}',
+  '.NET': '\u{e77f}',
+  Ruby: '\u{e739}',
+  PHP: '\u{e73d}',
+  Apple: '\u{f179}',
   Containers: '\u{f308}',
-  'Xcode & Apple': '\u{f179}',
-  'Editors & IDEs': '\u{f044}',
-  System: '\u{f109}',
+  macOS: '\u{f109}',
+  Editors: '\u{f044}',
+  'Game engines': '\u{f11b}',
 };
 
 export const ICONS: Record<IconSet, Icons> = {
@@ -118,6 +125,7 @@ export const ICONS: Record<IconSet, Icons> = {
     skipped: '-',
     barFull: '#',
     barEmpty: '.',
+    spinner: ['|', '/', '-', '\\'],
     caps: { info: '-', warn: '!', error: '#' },
     map: { top: '"', bottom: '.', edgeRight: '|', edgeBottom: '_' },
     category: () => '',

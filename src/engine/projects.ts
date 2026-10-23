@@ -2,10 +2,8 @@ import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Emit,
-  type Hooks,
   HOME,
   type Plugin,
-  type Impact,
   type ScanContext,
   type Target,
   diskUsage,
@@ -16,18 +14,9 @@ import {
   which,
   wildcard,
 } from '../core/index.ts';
+import type { Owner, ProjectRule } from './define.ts';
 
-export interface ProjectRule {
-  name: string;
-  markers?: string[];
-  dirs?: string[];
-  contains?: string[];
-  clean?: string;
-  requires?: string[];
-  impact?: Impact;
-  description?: string;
-  hooks?: Hooks;
-}
+export type OwnedRule = ProjectRule & Owner;
 
 const NEVER_ENTER = new Set(['.git', '.hg', '.svn']);
 const UNGUARDED = new Set(['node_modules', '__pycache__', '__pypackages__']);
@@ -76,23 +65,25 @@ async function ruleMatches(rule: ProjectRule, dir: string, dirs: string[], files
   return matched;
 }
 
-export class ProjectsPlugin implements Plugin {
+const ruleKey = (rule: OwnedRule) => `${rule.plugin}/${rule.name}`;
+
+export class ProjectsScanner implements Plugin {
   name = 'Projects';
-  category = 'Projects';
+  group = 'Projects';
   description = 'Dependency and build folders inside project directories';
   private cleanable = new Map<string, boolean>();
   private newest = new Map<string, Promise<number>>();
   private statLimit = limiter(64);
   private rootMarkers: string[];
 
-  constructor(private rules: ProjectRule[]) {
+  constructor(private rules: OwnedRule[]) {
     this.rootMarkers = ['.git', ...new Set(rules.flatMap((r) => r.markers ?? []).filter((m) => !/[*?]/.test(m)))];
   }
 
   async available(): Promise<boolean> {
     for (const rule of this.rules) {
       const tools = await Promise.all((rule.requires ?? []).map(which));
-      this.cleanable.set(rule.name, Boolean(rule.clean) && tools.every(Boolean));
+      this.cleanable.set(ruleKey(rule), Boolean(rule.clean) && tools.every(Boolean));
     }
     return this.rules.length > 0;
   }
@@ -125,6 +116,7 @@ export class ProjectsPlugin implements Plugin {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
     const files = entries.filter((e) => !e.isDirectory()).map((e) => e.name);
+    const found = new Set<string>();
     for (const rule of this.rules) {
       const candidates = (await ruleMatches(rule, dir, dirs, files)).filter((p) => !claimed.has(p) && !isProtected(p) && !matchesAny(p, ctx.exclude));
       const paths: string[] = [];
@@ -132,19 +124,22 @@ export class ProjectsPlugin implements Plugin {
         if (!(await keptByGit(path.dirname(p), path.basename(p)))) paths.push(p);
       }
       if (!paths.length) continue;
-      paths.forEach((p) => claimed.add(p));
+      paths.forEach((p) => found.add(p));
       emit({
-        plugin: rule.name,
+        plugin: rule.plugin,
+        group: rule.group,
+        item: rule.name,
         label: dir,
         paths,
         project: await this.projectRoot(dir, root),
         impact: rule.impact ?? 'rebuild',
       note: rule.description,
-        commands: this.cleanable.get(rule.name) ? [{ run: rule.clean!, cwd: dir }] : [],
-        tool: rule.clean ? { bin: rule.requires?.[0] ?? rule.clean.split(' ')[0], installed: Boolean(this.cleanable.get(rule.name)), clean: [{ run: rule.clean, cwd: dir }] } : undefined,
+        commands: this.cleanable.get(ruleKey(rule)) ? [{ run: rule.clean!, cwd: dir }] : [],
+        tool: rule.clean ? { bin: rule.requires?.[0] ?? rule.clean.split(' ')[0], installed: Boolean(this.cleanable.get(ruleKey(rule))), clean: [{ run: rule.clean, cwd: dir }] } : undefined,
         hooks: rule.hooks,
       });
     }
+    found.forEach((p) => claimed.add(p));
     for (const d of dirs) {
       const child = path.join(dir, d);
       if (!NEVER_ENTER.has(d) && !claimed.has(child) && !isProtected(child) && !matchesAny(child, ctx.exclude)) queue.push(child);

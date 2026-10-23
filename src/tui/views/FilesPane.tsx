@@ -13,9 +13,10 @@ export interface FilesPaneProps {
   focused: boolean;
   focusColor: string;
   sortLabel: string;
+  owners: (path: string) => string[];
 }
 
-export function FilesPane({ browse, width, height, focused, focusColor, sortLabel }: FilesPaneProps) {
+export function FilesPane({ browse, width, height, focused, focusColor, sortLabel, owners }: FilesPaneProps) {
   const { theme, icons } = useLook();
   const level = currentLevel(browse);
   const inner = { w: width - 2, h: height - 2 };
@@ -35,13 +36,18 @@ export function FilesPane({ browse, width, height, focused, focusColor, sortLabe
           <EmptyState message="Nothing to browse: this item runs a tool command." detail={['The preview shows the command and what it lists.']} hint={{ keys: 'esc', label: 'back to the list' }} width={inner.w} height={inner.h} />
         )
       ) : null}
-      {entries.slice(level.offset, level.offset + inner.h).map((e, i) => (
-        <text key={e.path} wrapMode="none" bg={level.offset + i === level.cursor ? theme.activeBg : undefined}>
-          <span fg={entryColor(level.offset + i, theme.hues)}>{`${icons.swatch} `}</span>
-          {`${human(e.size).padStart(7)}  `}
-          {fit(e.name + (e.isDir ? '/' : ''), inner.w - 14)}
-        </text>
-      ))}
+      {entries.slice(level.offset, level.offset + inner.h).map((e, i) => {
+        const also = owners(e.path);
+        const tag = also.length ? `  ${also.join(', ')}` : '';
+        return (
+          <text key={e.path} wrapMode="none" bg={level.offset + i === level.cursor ? theme.activeBg : undefined}>
+            <span fg={entryColor(level.offset + i, theme.hues)}>{`${icons.swatch} `}</span>
+            {`${human(e.size).padStart(7)}  `}
+            {fit(e.name + (e.isDir ? '/' : ''), Math.max(8, inner.w - 14 - tag.length))}
+            <span fg={theme.warn}>{tag}</span>
+          </text>
+        );
+      })}
     </Frame>
   );
 }

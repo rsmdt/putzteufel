@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { defaultConfigFiles, loadConfig } from './config/load.ts';
-import { IMPACTS, type Plugin, type Target, human, tildify, which } from './core/index.ts';
-import { SpecPlugin } from './plugins/spec.ts';
-import { ProjectsPlugin } from './plugins/projects.ts';
+import { GROUP_ORDER, IMPACTS, type Target, human, tildify, which } from './core/index.ts';
+import { pluginsFrom } from './engine/build.ts';
+import { overlapIndex, uniqueSize } from './engine/overlap.ts';
 import { scanAll } from './engine/scan.ts';
 
 const HELP = `putzteufel [ROOTS...] [options]
@@ -45,10 +45,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const config = await loadConfig([...defaultConfigFiles(), ...values.config]);
 
   const roots = positionals.length ? positionals.map((r) => path.resolve(r)) : config.settings.roots.length ? config.settings.roots : [process.cwd()];
-  const plugins: Plugin[] = [
-    ...(values['no-projects'] ? [] : [new ProjectsPlugin(config.rules)]),
-    ...(values['no-caches'] ? [] : config.plugins.map((spec) => new SpecPlugin(spec))),
-  ];
+  const plugins = pluginsFrom(config.plugins, { projects: !values['no-projects'], items: !values['no-caches'] });
   const ctx = {
     roots,
     exclude: [...config.settings.exclude, ...values.exclude],
@@ -58,10 +55,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 
   if (values.plugins) {
     console.log(`config files: ${config.sources.map(tildify).join(', ') || 'none'}`);
-    console.log(`project rules: ${config.rules.map((r) => r.name).join(', ')}`);
-    for (const plugin of plugins) {
-      const tool = plugin.tool ? ((await which(plugin.tool.bin)) ? `  tool: ${plugin.tool.bin}` : `  tool: ${plugin.tool.bin} not installed, deletes directly${plugin.tool.install ? `, offers ${plugin.tool.install}` : ''}`) : '';
-      console.log(`${(await plugin.available()) ? '✓' : '·'} ${plugin.category.padEnd(32)} ${plugin.name.padEnd(30)}${tool}`);
+    const rank = (group: string) => (GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : GROUP_ORDER.length);
+    for (const def of [...config.plugins].sort((a, b) => rank(a.group) - rank(b.group) || a.name.localeCompare(b.name))) {
+      const parts = [...(def.projects ?? []).map((r) => `${r.name} (in projects)`), ...(def.items ?? []).map((i) => i.name)];
+      const tools: string[] = [];
+      for (const item of def.items ?? []) {
+        if (!item.tool || tools.some((t) => t.startsWith(item.tool!.bin))) continue;
+        tools.push((await which(item.tool.bin)) ? item.tool.bin : `${item.tool.bin} not installed${item.tool.install ? `, offers ${item.tool.install}` : ''}`);
+      }
+      console.log(`${def.group.padEnd(18)} ${def.name.padEnd(14)} ${parts.join(', ')}${tools.length ? `  tool: ${tools.join(', ')}` : ''}`);
     }
     config.errors.forEach((e) => console.error(`error: ${e}`));
     return config.errors.length ? 1 : 0;
@@ -70,15 +72,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (values.list) {
     const found: Target[] = [];
     await scanAll(plugins, { ...ctx, signal: new AbortController().signal }, (t) => (t.ageDays !== undefined && t.ageDays < ctx.olderThan ? undefined : found.push(t)), (m) => console.error(`warning: ${m}`));
-    found.sort((a, b) => a.category.localeCompare(b.category) || a.plugin.localeCompare(b.plugin) || (b.size ?? 0) - (a.size ?? 0));
+    found.sort((a, b) => a.group.localeCompare(b.group) || a.plugin.localeCompare(b.plugin) || (b.size ?? 0) - (a.size ?? 0));
+    const overlap = overlapIndex(found);
     for (const t of found) {
+      const cover = overlap.coveredBy(t);
+      const shared = cover ? `  (counted under ${cover.plugin})` : '';
       const age = t.ageDays === undefined ? '' : `${Math.floor(t.ageDays)}d`;
       const paths = t.paths.filter((p) => p !== t.label).map((p) => (p.startsWith(t.label + path.sep) ? path.relative(t.label, p) : tildify(p)));
       const via = t.commands.length ? `  via: ${t.commands[0].run}` : t.tool && !t.tool.installed && t.tool.clean.length ? `  ${t.tool.bin} ${t.tool.broken ? `failed (${t.tool.broken})` : 'not installed'}: deleted directly${t.tool.install && !t.tool.broken ? ` (or ${t.tool.install})` : ''}` : '';
-      console.log(`${t.selected ? 'x' : ' '} ${human(t.size).padStart(7)} ${age.padStart(5)} ${IMPACTS[t.impact].tag.padEnd(11)}  ${t.category} / ${t.plugin}  ${tildify(t.label)}${paths.length ? `  [${paths.join(', ')}]` : ''}${via}`);
+      console.log(`${t.selected ? 'x' : ' '} ${human(t.size).padStart(7)} ${age.padStart(5)} ${IMPACTS[t.impact].tag.padEnd(11)}  ${t.group} / ${t.plugin}${t.item && t.item !== t.label ? ` / ${t.item}` : ''}  ${tildify(t.label)}${paths.length ? `  [${paths.join(', ')}]` : ''}${via}${shared}`);
     }
-    const total = found.reduce((n, t) => n + (t.size ?? 0), 0);
-    const selected = found.filter((t) => t.selected).reduce((n, t) => n + (t.size ?? 0), 0);
+    const total = uniqueSize(found);
+    const selected = uniqueSize(found.filter((t) => t.selected));
     console.log(`${human(total)} across ${found.length} items, ${human(selected)} selected by default`);
     config.errors.forEach((e) => console.error(`error: ${e}`));
     return 0;

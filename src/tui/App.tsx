@@ -3,6 +3,7 @@ import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Hooks, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
+import { overlapIndex, uniqueSize } from '../engine/overlap.ts';
 import { missingTools } from '../engine/run.ts';
 import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
 import { type Action, type Context, keyToken, printable, resolve } from './keys.ts';
@@ -11,7 +12,7 @@ import { ancestry } from './map/layout.ts';
 import { type Browse, browseMap, currentEntry, currentLevel, enter, leave, moveCursor, openBrowse, sortLevel, withLevel } from './model/browse.ts';
 import { type Line, impactLines, legendLines, reviewLines, toolLines } from './model/explain.ts';
 import { type Level, type Message, message } from './model/messages.ts';
-import { buildMap, buildRows, colorIndex, groupTargets, stats, sum } from './model/rows.ts';
+import { buildMap, buildRows, colorIndex, groupTargets, sectionKey, stats } from './model/rows.ts';
 import { DEFAULT_SORT, SORT_KEYS, type Sort, describeSort } from './sort.ts';
 import { useCleanRun } from './state/useCleanRun.ts';
 import { useScan } from './state/useScan.ts';
@@ -100,7 +101,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const targets = scan.targets.current;
   const { groups, highlights } = useMemo(() => groupTargets(targets, filter, sort), [scan.version, filter, sort]);
   const rows = useMemo(() => buildRows(groups, filter, collapsed, expanded), [groups, collapsed, expanded]);
-  const tree = useMemo(() => buildMap(groups, theme.hues), [groups, theme]);
+  const overlap = useMemo(() => overlapIndex(targets), [scan.version]);
+  const tree = useMemo(() => buildMap(groups, theme.hues, new Map(targets.flatMap((t) => { const by = overlap.coveredBy(t); return by ? [[t.id, by] as [number, Target]] : []; }))), [groups, theme, overlap]);
   const colors = useMemo(() => colorIndex(tree), [tree]);
   const current = rows[Math.min(cursor, rows.length - 1)];
   if (cursor < offsetRef.current) offsetRef.current = cursor;
@@ -109,6 +111,18 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const selected = targets.filter((t) => t.selected);
   const descriptions = useMemo(() => new Map(plugins.map((p) => [p.name, p.description ?? ''])), [plugins]);
   const young = (t: Target) => isYounger(t, ctx.recentDays, minAge);
+  const label = (t: Target) => (t.item && t.item !== t.label && !t.label.startsWith('/') && !t.label.startsWith('~') ? `${t.plugin} ${t.item}` : t.plugin);
+  const shared = (t: Target) => [...new Set(overlap.sharedWith(t).map(label))];
+  const ownersOf = (p: string) => (browse ? [...new Set(overlap.owners(p).filter((t) => t.id !== browse.target.id).map(label))] : []);
+  const sharedLines = (t: Target): Line[] => {
+    const others = overlap.sharedWith(t);
+    if (!others.length) return [];
+    const cover = overlap.coveredBy(t);
+    return [
+      { text: `Also touched by: ${others.map((o) => `${label(o)} (${tildify(o.label)})`).join(', ')}`, fg: theme.warn },
+      ...(cover ? [{ text: `Counted once, under ${label(cover)}; when both are selected only ${label(cover)} cleans it.`, fg: theme.warn }] : []),
+    ];
+  };
 
   const overlayContext = (): Context | null => {
     if (!overlay) return null;
@@ -116,7 +130,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     if (overlay === 'progress') return run.failure ? 'failure' : run.done ? 'done' : 'progress';
     return overlay;
   };
-  const baseContext: Context = filtering ? 'filter' : focus === 'map' && showMap ? 'map' : focus === 'preview' ? 'preview' : browse ? 'files' : 'list';
+  const paneFocus: Focus = focus === 'map' && !showMap ? 'list' : focus;
+  const baseContext: Context = filtering ? 'filter' : paneFocus === 'map' ? 'map' : paneFocus === 'preview' ? 'preview' : browse ? 'files' : 'list';
   const context = overlayContext() ?? baseContext;
 
   useEffect(() => {
@@ -141,8 +156,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     }
     let cancelled = false;
     const t = current.target;
-    const head = `${tildify(t.label)}  ·  ${human(t.size)}  ·  ${t.plugin}${t.ageDays === undefined ? '' : `  ·  last changed ${Math.floor(t.ageDays)}d ago`}`;
-    const explained: Line[] = [head, ...impactLines(t, ctx.recentDays, minAgeRef.current, theme), ...toolLines(t, theme)];
+    const head = `${tildify(t.label)}  ·  ${human(t.size)}  ·  ${t.plugin}${t.item && t.item !== t.label ? ` / ${t.item}` : ''}${t.ageDays === undefined ? '' : `  ·  last changed ${Math.floor(t.ageDays)}d ago`}`;
+    const explained: Line[] = [head, ...impactLines(t, ctx.recentDays, minAgeRef.current, theme), ...toolLines(t, theme), ...sharedLines(t)];
     setPreview(explained);
     const slow = setTimeout(() => !cancelled && setPreview([...explained, 'listing files…']), 500);
     const timer = setTimeout(() => {
@@ -158,7 +173,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
       clearTimeout(timer);
       clearTimeout(slow);
     };
-  }, [current?.key, scan.version, browse === null, theme]);
+  }, [current?.key, scan.version, browse === null, theme, overlap]);
 
   useEffect(() => {
     if (!browse) return;
@@ -207,7 +222,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     const chain = ancestry(tree, key);
     const category = chain[1]?.key;
     const plugin = chain[2]?.key;
-    if (category) setCollapsed((s) => new Set([...s].filter((k) => k !== category)));
+    if (category) setCollapsed((s) => new Set([...s].filter((k) => k !== category && k !== sectionKey(category))));
     if (plugin && chain.length > 3) setExpanded((s) => new Set(s).add(plugin));
     setPendingKey(key);
   };
@@ -257,7 +272,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   };
 
   const focusOrder: Focus[] = showMap ? ['list', 'preview', 'map'] : ['list', 'preview'];
-  const cycleFocus = (step: 1 | -1) => setFocus((f) => focusOrder[(focusOrder.indexOf(f) + step + focusOrder.length) % focusOrder.length]);
+  const cycleFocus = (step: 1 | -1) => setFocus(focusOrder[(focusOrder.indexOf(paneFocus) + step + focusOrder.length) % focusOrder.length]);
 
   const currentRow = () => rows[Math.min(cursorRef.current, rows.length - 1)];
 
@@ -271,6 +286,11 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     }
     const row = currentRow();
     if (!row) return;
+    if (row.kind === 'section') {
+      const first = groups.find(([g]) => sectionKey(g) === row.key)?.[0];
+      if (action === 'open' && first) reveal(first);
+      return;
+    }
     const chain = ancestry(tree, row.key);
     const node = chain.at(-1);
     const parent = chain.at(-2);
@@ -497,13 +517,13 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
           return;
         }
         if ((action === 'expand' || action === 'open') && row) {
-          if (row.kind === 'category') setCollapsed((s) => new Set([...s].filter((k) => k !== row.key)));
+          if (row.kind === 'group' || row.kind === 'section') setCollapsed((s) => new Set([...s].filter((k) => k !== row.key)));
           if (row.kind === 'plugin') setExpanded((s) => new Set(s).add(row.key));
           if (row.kind === 'target' && action === 'open') openFiles(row.target);
           return;
         }
         if (action === 'collapse' && row) {
-          if (row.kind === 'category') setCollapsed((s) => new Set(s).add(row.key));
+          if (row.kind === 'group' || row.kind === 'section') setCollapsed((s) => new Set(s).add(row.key));
           if (row.kind === 'plugin') setExpanded((s) => new Set([...s].filter((k) => k !== row.key)));
           if (row.kind === 'target') {
             setExpanded((s) => new Set([...s].filter((k) => k !== row.parent)));
@@ -578,11 +598,12 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <HeaderBar
           context={context}
           width={width}
+          busy={scan.scanning || (overlay === 'progress' && !run.done)}
           segments={[
             { text: 'putzteufel', color: theme.accent, priority: 'optional', bold: true },
             { text: `${targets.length} found`, priority: 'essential' },
             { text: `${selected.length} selected`, priority: 'essential' },
-            { text: `${human(sum(selected))} to free`, priority: 'normal' },
+            { text: `${human(uniqueSize(selected))} to free`, priority: 'normal' },
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
             ...(scanningShown ? [{ text: 'scanning…', color: theme.accent, priority: 'essential' as const }] : []),
@@ -592,7 +613,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <box flexDirection="row" height={bodyHeight}>
           <box flexDirection="column" width={leftWidth}>
             {browse ? (
-              <FilesPane browse={browse} width={leftWidth} height={listHeight} focused={focus === 'list'} focusColor={focusColor} sortLabel={describeSort(sort)} />
+              <FilesPane browse={browse} width={leftWidth} height={listHeight} focused={paneFocus === 'list'} focusColor={focusColor} sortLabel={describeSort(sort)} owners={ownersOf} />
             ) : (
               <ListPane
                 rows={rows}
@@ -600,16 +621,17 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
                 offset={offset}
                 width={leftWidth}
                 height={listHeight}
-                focused={focus === 'list'}
+                focused={paneFocus === 'list'}
                 focusColor={focusColor}
                 colors={colors}
                 highlights={highlights}
                 young={young}
-                bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(sum(selected))}`}
+                shared={shared}
+                bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(uniqueSize(selected))}`}
                 empty={listEmpty}
               />
             )}
-            <PreviewPane lines={previewLines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={focus === 'preview'} focusColor={focusColor} />
+            <PreviewPane lines={previewLines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={paneFocus === 'preview'} focusColor={focusColor} />
           </box>
           {showMap ? (
             <MapPane
@@ -620,7 +642,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
               depth={browse ? 1 : SUNBURST_DEPTH}
               width={mapWidth}
               height={bodyHeight}
-              focused={focus === 'map'}
+              focused={paneFocus === 'map'}
               focusColor={focusColor}
               onPick={onMapPick}
             />

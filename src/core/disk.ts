@@ -4,18 +4,29 @@ import { exists, tildify } from './paths.ts';
 import { describeCommand, execFileAsync } from './shell.ts';
 import type { Entry, Target } from './types.ts';
 
+const sizeCache = new Map<string, Promise<number>>();
+
+export function forgetSizes(): void {
+  sizeCache.clear();
+}
+
+function sizeOf(p: string): Promise<number> {
+  if (!sizeCache.has(p)) {
+    sizeCache.set(
+      p,
+      execFileAsync('du', ['-sk', '--', p], { maxBuffer: 16 * 1024 * 1024 }).then(
+        (r) => Number.parseInt(r.stdout, 10) * 1024 || 0,
+        (e: { stdout?: string }) => Number.parseInt(e.stdout ?? '', 10) * 1024 || 0,
+      ),
+    );
+  }
+  return sizeCache.get(p)!;
+}
+
 export async function diskUsage(paths: string[]): Promise<number> {
   const present = (await Promise.all(paths.map(async (p) => ((await exists(p)) ? p : null)))).filter((p): p is string => p !== null);
-  if (!present.length) return 0;
-  const stdout = await execFileAsync('du', ['-sk', '--', ...present], { maxBuffer: 16 * 1024 * 1024 }).then(
-    (r) => r.stdout,
-    (e: { stdout?: string }) => e.stdout ?? '',
-  );
-  return stdout
-    .split('\n')
-    .map((line) => Number.parseInt(line.split('\t')[0], 10))
-    .filter(Number.isFinite)
-    .reduce((sum, kb) => sum + kb * 1024, 0);
+  const sizes = await Promise.all([...new Set(present)].map(sizeOf));
+  return sizes.reduce((n, s) => n + s, 0);
 }
 
 export async function newestMtime(paths: string[]): Promise<number | undefined> {

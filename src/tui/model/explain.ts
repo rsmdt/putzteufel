@@ -1,7 +1,7 @@
 import { type Hooks, IMPACTS, IMPACT_ORDER, type Target, describeCommand, human, isRecent, tildify } from '../../core/index.ts';
+import { coveredIn, uniqueSize } from '../../engine/overlap.ts';
 import { actionFor, missingTools } from '../../engine/run.ts';
 import type { Theme } from '../theme.ts';
-import { sum } from './rows.ts';
 
 export type Line = string | { text: string; fg?: string; bold?: boolean };
 
@@ -44,12 +44,12 @@ export function legendLines(recentDays: number, theme: Theme): Line[] {
 
 export function reviewLines(selected: Target[], useTrash: boolean, install: Set<string>, uninstallAfter: boolean, hooks: Hooks, theme: Theme): Line[] {
   const lines: Line[] = [
-    { text: `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(sum(selected))}.`, bold: true },
+    { text: `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(uniqueSize(selected))}.`, bold: true },
     'Items with a $ line run that tool command instead of deleting files. Press f on an item in the list to browse its files.',
   ];
   for (const impact of IMPACT_ORDER) {
     const group = selected.filter((t) => t.impact === impact);
-    if (group.length) lines.push({ text: `  ${String(group.length).padStart(4)} ${IMPACTS[impact].tag.padEnd(12)} ${human(sum(group)).padStart(7)}  ${IMPACTS[impact].meaning}`, fg: theme.impact[impact] });
+    if (group.length) lines.push({ text: `  ${String(group.length).padStart(4)} ${IMPACTS[impact].tag.padEnd(12)} ${human(uniqueSize(group)).padStart(7)}  ${IMPACTS[impact].meaning}`, fg: theme.impact[impact] });
   }
   if (selected.some((t) => t.impact === 'dataloss')) lines.push({ text: 'Data loss items cannot be recovered. Check them below before pressing y.', fg: theme.impact.dataloss });
   const tools = missingTools(selected).filter((t) => install.has(t.bin));
@@ -60,11 +60,18 @@ export function reviewLines(selected: Target[], useTrash: boolean, install: Set<
     ...(hooks.after ? [`  after hook:   $ ${hooks.after}`] : []),
   ];
   if (steps.length) lines.push('', 'Run steps:', ...steps);
+  const covered = coveredIn(selected);
+  if (covered.size) lines.push({ text: `${covered.size} item(s) lie inside another selected item; they are counted and cleaned once, by that item.`, fg: theme.warn });
   lines.push('');
   for (const t of [...selected].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))) {
     const notable = t.impact !== 'regenerates' && t.impact !== 'rebuild';
     lines.push({ text: `${human(t.size).padStart(7)}  ${IMPACTS[t.impact].tag.padEnd(12)} [${t.plugin}] ${tildify(t.label)}`, fg: notable ? theme.impact[t.impact] : undefined });
     const action = actionFor(t, install);
+    const cover = covered.get(t.id);
+    if (cover) {
+      lines.push({ text: `           counted under ${cover.plugin} (${tildify(cover.label)}); skipped when that runs`, fg: theme.warn });
+      continue;
+    }
     if (t.hooks?.before) lines.push(`           before: $ ${t.hooks.before}`);
     if (action.kind === 'commands') for (const c of action.commands) lines.push(`           $ ${describeCommand(c)}${action.afterInstall ? '   (after install)' : ''}`);
     else {

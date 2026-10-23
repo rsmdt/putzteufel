@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'bun:test';
 import { type Target, forgetWhich } from '../src/core/index.ts';
-import { SpecPlugin } from '../src/plugins/spec.ts';
+import { singleItem } from '../src/engine/build.ts';
 import { missingTools, runClean } from '../src/engine/run.ts';
 import { scanAll } from '../src/engine/scan.ts';
 import { tempDir, write } from './fixture.ts';
@@ -26,7 +26,7 @@ if [ "$1" = uninstall ]; then rm -f "${bin}/fakecache"; fi
   forgetWhich();
   const spec = {
     name: 'Fake cache',
-    category: 'Test',
+    group: 'Test',
     tool: { bin: 'fakecache', install: 'fakebrew install fakecache', uninstall: 'fakebrew uninstall fakecache' },
     paths: [`${root}/cache/fakecache`],
     list: 'fakecache dir',
@@ -36,10 +36,10 @@ if [ "$1" = uninstall ]; then rm -f "${bin}/fakecache"; fi
   return { root, bin, journal, spec };
 }
 
-async function scan(spec: ConstructorParameters<typeof SpecPlugin>[0]): Promise<Target[]> {
+async function scan(spec: Parameters<typeof singleItem>[0]): Promise<Target[]> {
   const found: Target[] = [];
   const ctx = { roots: [], exclude: [], olderThan: 0, recentDays: 0, signal: new AbortController().signal };
-  await scanAll([new SpecPlugin(spec)], ctx, (t) => found.push(t), assert.fail);
+  await scanAll([singleItem(spec)], ctx, (t) => found.push(t), assert.fail);
   return found;
 }
 
@@ -121,7 +121,7 @@ test('a tool whose own lookup fails falls back to its default folder and is not 
 test('a failing item asks what to do: retry, skip, skip all or abort', async () => {
   const root = tempDir();
   write(root, { 'one/a': 'x', 'two/b': 'x', 'three/c': 'x', flag: '' });
-  const target = (id: number, name: string, run: string): Target => ({ id, plugin: 'P', category: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
+  const target = (id: number, name: string, run: string): Target => ({ id, plugin: 'P', group: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
   const flaky = `if [ -f "${root}/flag" ]; then rm "${root}/flag"; exit 1; fi; rm -rf "${root}/one"`;
   const asked: string[] = [];
   const answers = ['retry', 'abort'] as const;

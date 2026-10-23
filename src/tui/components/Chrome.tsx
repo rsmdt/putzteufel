@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { fit } from '../map/layout.ts';
 import { fitHints, HINT_SEPARATOR, type HintPriority } from '../hints.ts';
 import { type Context, footerHints } from '../keys.ts';
@@ -61,11 +62,25 @@ export function fitSegments(segments: Segment[], width: number): Segment[] {
   return kept;
 }
 
-export function HeaderBar({ context, width, segments }: { context: Context; width: number; segments: Segment[] }) {
+export const SPINNER_INTERVAL = 80;
+
+function Spinner({ active }: { active: boolean }) {
+  const { theme, icons } = useLook();
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setFrame((f) => f + 1), SPINNER_INTERVAL);
+    return () => clearInterval(timer);
+  }, [active]);
+  return <strong fg={active ? theme.accent : theme.ok}>{active ? `${icons.spinner[frame % icons.spinner.length]} ` : `${icons.done} `}</strong>;
+}
+
+export function HeaderBar({ context, width, segments, busy }: { context: Context; width: number; segments: Segment[]; busy: boolean }) {
   const { theme } = useLook();
-  const shown = fitSegments(segments, width - PILL_WIDTH - 2);
+  const shown = fitSegments(segments, width - PILL_WIDTH - 4);
   return (
     <text wrapMode="none" fg={theme.text}>
+      <Spinner active={busy} />
       <ModePill context={context} />
       {' '}
       {shown.map((s, i) => (

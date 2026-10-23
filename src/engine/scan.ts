@@ -1,14 +1,9 @@
-import path from 'node:path';
-import { type Plugin, type ScanContext, type Target, type TargetDraft, limiter, preselect } from '../core/index.ts';
+import { type Plugin, type ScanContext, type Target, type TargetDraft, forgetSizes, limiter, preselect } from '../core/index.ts';
 
 let nextId = 1;
 
-function overlaps(paths: string[], claimed: string[]): boolean {
-  return paths.some((p) => claimed.some((c) => p === c || p.startsWith(c + path.sep) || c.startsWith(p + path.sep)));
-}
-
 export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t: Target) => void, onError: (message: string) => void): Promise<void> {
-  const claimed: string[] = [];
+  forgetSizes();
   const measureLimit = limiter(8);
   const measuring: Promise<void>[] = [];
 
@@ -23,15 +18,14 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
       ...draft,
       id: nextId++,
       plugin: draft.plugin ?? plugin.name,
-      category: plugin.category,
+      group: draft.group ?? plugin.group,
+      fallback: plugin.fallback || undefined,
       selected: false,
     };
     if (!target.paths.length && !target.listed.length) {
       onError(`${plugin.name}: "${target.label}" lists no affected files, skipped`);
       return;
     }
-    if (plugin.fallback && overlaps(target.paths, claimed)) return;
-    claimed.push(...target.paths);
     measuring.push(
       measureLimit(async () => {
         if (ctx.signal.aborted) return;
