@@ -9,8 +9,8 @@ bun install
 bun link                       # puts `putzteufel` on PATH
 putzteufel                     # TUI: scan cwd for projects + all caches
 putzteufel ~/Code --older-than 90
-putzteufel --list              # plain dry run, no TUI
-putzteufel --plugins           # which plugins are active, config errors
+putzteufel scan                # plain dry run, no TUI (putzteufel --list still works)
+putzteufel plugins             # which plugins are active, config errors
 ```
 
 Layout: the header starts with a spinner that turns while putzteufel scans or cleans (a check when it is done) and a mode pill (LIST, FILES, MAP, PREVIEW, FILTER, REVIEW, CLEANING, …) that says what your keys act on. Below it are the item list (or the file browser), the preview of the item at the cursor, and the disk map on the right. Each pane has a frame whose titles show the cursor position, the sort and the selection; the focused pane's frame is drawn in the pill's color. The line above the footer shows the latest message (warnings, results, mode changes); `w` opens all of them. The footer lists the keys for the current mode and drops the least important ones first when the window is narrow. Dialogs open over a dimmed screen.
@@ -57,6 +57,37 @@ Every item carries an impact tag that says what happens after it is removed. The
 | `data loss` | cannot be recovered (Docker volumes and stopped containers, Xcode archives, Trash) | no |
 
 Items younger than the age threshold and projects edited within `recentDays` (default 7) also start unselected, tagged `recent`.
+
+## Command line and JSON
+
+Everything the TUI does is also available without it, so scripts, schedules and other UIs can drive putzteufel:
+
+```sh
+putzteufel scan ~/Code                     # what can be cleaned; each row has a stable 12-character key
+putzteufel files 3f9c2a1b7d04 ~/Code       # the files inside one item (--dir PATH to go deeper)
+putzteufel plan --plugin Docker --older-than 30   # what a cleanup would do; nothing is removed
+putzteufel clean --key 3f9c2a1b7d04 --trash --yes
+putzteufel clean --impact regenerates --install-tools all --uninstall-after --on-failure retry:2 --yes
+putzteufel plugins                         # plugins, their tools, config errors
+putzteufel history                         # cleanups recorded in the operations log
+```
+
+Selection works the same for `scan` (the `x` column), `plan` and `clean`: `--key`, `--exclude-key`, `--plugin`, `--item Plugin/Item`, `--group`, `--impact`, `--filter` (fuzzy), `--all`, `--default` (the TUI's default selection, also used when nothing else is given) and `--older-than DAYS`. `--only PLUGIN` scans just those plugins, which is much faster. `clean` without `--yes` prints the plan and exits with code 3; exit codes are 0 ok, 1 error, 2 some steps failed. Native tools are only installed with `--install-tools`.
+
+With `--json`, every command writes newline-delimited JSON, one event per line, each with `"event"` and `"schema": 1`:
+
+| command | events |
+|---|---|
+| `scan` | `found` (an item, before measuring, possibly with `estimated` sizes from the last run), `measured`, `warning`, `config-error`, `done` (`count`, `size`, `selectedSize`, `selected` keys, all `targets`) |
+| `files` | `files` (`target`, `dir`, `entries` with `name`, `path`, `size`, `isDir`, `mtimeMs`, and `owners`: keys of other items that touch the entry) |
+| `plan` | `plan` (`plan` with `size`, `notes`, `hooks`, `install`, `uninstall`, `items`; `exact` with `total` bytes on disk and `freed`, counting hard-linked files once) |
+| `clean` | `step` (hooks, installs, items and uninstalls with `state` pending/running/done/failed/skipped), `failure` (the `decision` taken), `done` (`freed`, `cleaned` keys, `aborted`, `failed`); without `--yes`: `confirmation-required` |
+| `plugins` | `plugin` (name, group, section, projects, items, tools), `config-error` |
+| `history` | `operation` (one operations log entry) |
+
+A target in these events has `key`, `plugin`, `item`, `group`, `section`, `label`, `paths`, `listed`, `size`, `linkedBytes`, `ageDays`, `estimated`, `impact` (`kind`, `tag`, `meaning`, `preselected`), `note`, `selected`, `selectedReason`, `commands`, `tool` (`bin`, `installed`, `broken`, `install`, `uninstall`, `clean`), `hooks`, `project`, `fallback`, `sharedWith` (keys) and `coveredBy` (key).
+
+Sizes come from one walk per folder that counts each hard-linked file once and records how much of it is hard-linked elsewhere (`linkedBytes`); deleting one link of a file frees nothing while another link remains, so `plan` reports both the bytes on disk and what would actually be freed. Ages come from the newest file at any depth. Sizes and ages from the last scan are kept in `~/.config/putzteufel/sizes.json` and shown (marked `≈` in the TUI, `estimated` in JSON) while the new scan measures.
 
 ## Use at your own risk
 
