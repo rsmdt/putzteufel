@@ -58,6 +58,10 @@ Every item carries an impact tag that says what happens after it is removed. The
 
 Items younger than the age threshold and projects edited within `recentDays` (default 7) also start unselected, tagged `recent`.
 
+## Use at your own risk
+
+putzteufel deletes files. It is free software under the GNU General Public License v3.0 or later (see `LICENSE`), provided **without any warranty**: see sections 15 (Disclaimer of Warranty) and 16 (Limitation of Liability). You choose what is removed, and the review screen lists every folder and command before anything runs. Use Trash mode (`t`) when you are unsure, and keep backups of anything you cannot recreate.
+
 ## Safety rules
 
 - Symlinks are never followed or deleted through.

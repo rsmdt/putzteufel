@@ -13,6 +13,8 @@ export function WelcomeDialog({ screen }: { screen: Screen }) {
     'enter or f on an item lists its files. The map on the right shows sizes.',
     '',
     'Start: ↑↓ to move, space to (de)select, d to review.',
+    '',
+    'putzteufel comes with no warranty (GPL-3.0, sections 15 and 16). You decide what is removed; review it first.',
   ];
   return (
     <Overlay title="Welcome to putzteufel" context="welcome" screen={screen} width={84} height={lines.length + 5} color={theme.accent}>
