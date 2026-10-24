@@ -2,8 +2,9 @@ import path from 'node:path';
 import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Hooks, type Operation, type Plugin, type ScanContext, type Target, describeCommand, logOperation, trashAvailable, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
-import { overlapIndex, uniqueSize } from '../engine/overlap.ts';
+import { type Freed, type Hooks, type Operation, type Plugin, type ScanContext, type Target, describeCommand, exactFreed, logOperation, trashAvailable, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
+import { coveredIn, overlapIndex, uniqueSize } from '../engine/overlap.ts';
+import type { Estimate } from '../engine/scan.ts';
 import { missingTools } from '../engine/run.ts';
 import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
 import { type Action, type Context, keyToken, printable, resolve } from './keys.ts';
@@ -48,16 +49,19 @@ export interface AppProps {
   firstRun?: boolean;
   onSaveState?: (patch: { welcomed?: boolean; theme?: string }) => void;
   onOperation?: (operation: Operation) => void;
+  estimates?: Map<string, Estimate>;
+  onScanned?: (targets: Target[]) => void;
   onExit: () => void;
 }
 
-export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onOperation = logOperation, onExit }: AppProps) {
+export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onOperation = logOperation, estimates, onScanned, onExit }: AppProps) {
   const { width, height } = useTerminalDimensions();
   const [messages, setMessages] = useState<Message[]>(configErrors.map((e) => message(e, 'error')));
   const say = (text: string, level: Level = 'info') => setMessages((all) => [...all.slice(-199), message(text, level)]);
   const minAgeRef = useRef(ctx.olderThan);
   const [minAge, setMinAge] = useState(ctx.olderThan);
-  const scan = useScan(plugins, ctx, minAgeRef, (text) => say(text, 'warn'));
+  const scan = useScan(plugins, ctx, minAgeRef, (text) => say(text, 'warn'), { estimates, onScanned });
+  const [exact, setExact] = useState<Freed | 'pending' | undefined>();
   const run = useCleanRun(onOperation);
 
   const [cursor, setCursor] = useState(0);
@@ -147,6 +151,17 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     trashAvailable().then(setCanTrash);
   }, []);
 
+  useEffect(() => {
+    if (overlay !== 'review') return setExact(undefined);
+    let cancelled = false;
+    setExact('pending');
+    const covered = coveredIn(selected);
+    exactFreed(selected.filter((t) => !covered.has(t.id)).flatMap((t) => t.paths)).then((result) => !cancelled && setExact(result));
+    return () => {
+      cancelled = true;
+    };
+  }, [overlay]);
+
   useEffect(() => setPreviewOffset(0), [current?.key, browse ? currentEntry(browse)?.path : undefined]);
 
   useEffect(() => {
@@ -163,7 +178,9 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     let cancelled = false;
     const t = current.target;
     const head = `${tildify(t.label)}  ·  ${human(t.size)}  ·  ${t.plugin}${t.item && t.item !== t.label ? ` / ${t.item}` : ''}${t.ageDays === undefined ? '' : `  ·  last changed ${Math.floor(t.ageDays)}d ago`}`;
-    const explained: Line[] = [head, ...impactLines(t, ctx.recentDays, minAgeRef.current, theme), ...toolLines(t, theme), ...sharedLines(t)];
+    const linked: Line[] = t.linkedBytes ? [{ text: `${human(t.linkedBytes)} of it is hard-linked elsewhere (for example a pnpm store); that space is freed only when every link is removed.`, fg: theme.warn }] : [];
+    const estimate: Line[] = t.estimated ? [{ text: 'Size and age are from the last scan; measuring now.', fg: theme.muted }] : [];
+    const explained: Line[] = [head, ...estimate, ...impactLines(t, ctx.recentDays, minAgeRef.current, theme), ...toolLines(t, theme), ...linked, ...sharedLines(t)];
     setPreview(explained);
     const slow = setTimeout(() => !cancelled && setPreview([...explained, 'listing files…']), 500);
     const timer = setTimeout(() => {
@@ -207,7 +224,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
 
   const toggle = (list: Target[]) => {
     const value = !list.every((t) => t.selected);
-    list.forEach((t) => (t.selected = value));
+    list.forEach((t) => {
+      t.selected = value;
+      t.touched = true;
+    });
     scan.bump();
   };
 
@@ -599,7 +619,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
       ? { message: `No item matches “${filter}”.`, hint: { keys: 'esc', label: 'clear the filter' } }
       : { message: 'Nothing to clean here.', detail: [`Scanned ${ctx.roots.map(tildify).join(', ') || 'no folders'} and the known cache locations.`], hint: { keys: 'r', label: 'rescan' } };
 
-  const reviewText = overlay === 'review' ? reviewLines(selected, { useTrash, trashAvailable: canTrash, install, uninstallAfter, hooks, minAge }, theme) : [];
+  const reviewText = overlay === 'review' ? reviewLines(selected, { useTrash, trashAvailable: canTrash, install, uninstallAfter, hooks, minAge, exact }, theme) : [];
   const help = overlay === 'help' ? helpLines(helpQuery, legendLines(ctx.recentDays, theme), theme) : [];
 
   return (
@@ -613,7 +633,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             { text: 'putzteufel', color: theme.accent, priority: 'optional', bold: true },
             { text: `${targets.length} found`, priority: 'essential' },
             { text: `${selected.length} selected`, priority: 'essential' },
-            { text: `${human(uniqueSize(selected))} to free`, priority: 'normal' },
+            { text: `${selected.some((t) => t.estimated || t.size === undefined) ? '≈' : ''}${human(uniqueSize(selected))} to free`, priority: 'normal' },
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
             ...(scanningShown ? [{ text: 'scanning…', color: theme.accent, priority: 'essential' as const }] : []),

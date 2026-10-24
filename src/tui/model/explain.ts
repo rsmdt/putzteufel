@@ -1,4 +1,4 @@
-import { type Hooks, IMPACTS, IMPACT_ORDER, type Target, describeCommand, disposalFor, human, isRecent, tildify } from '../../core/index.ts';
+import { type Freed, type Hooks, IMPACTS, IMPACT_ORDER, type Target, describeCommand, disposalFor, human, isRecent, tildify } from '../../core/index.ts';
 import { coveredIn, uniqueSize } from '../../engine/overlap.ts';
 import { actionFor, missingTools } from '../../engine/run.ts';
 import type { Theme } from '../theme.ts';
@@ -49,6 +49,7 @@ export interface ReviewOptions {
   uninstallAfter: boolean;
   hooks: Hooks;
   minAge: number;
+  exact?: Freed | 'pending';
 }
 
 export function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
@@ -63,10 +64,18 @@ export function disposalLines(selected: Target[], options: ReviewOptions, theme:
   return lines;
 }
 
+function exactLines(exact: Freed | 'pending' | undefined, theme: Theme): Line[] {
+  if (!exact) return [];
+  if (exact === 'pending') return [{ text: 'Measuring exactly how much space this frees…', fg: theme.muted }];
+  const kept = exact.total - exact.freed;
+  return [{ text: `Exactly ${human(exact.total)} on disk, each file counted once; ${human(exact.freed)} is freed${kept > 0 ? `. ${human(kept)} stays, because those files have hard links outside the selection` : ''}.`, fg: kept > 0 ? theme.warn : theme.text }];
+}
+
 export function reviewLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
   const { useTrash, install, uninstallAfter, hooks } = options;
   const lines: Line[] = [
     { text: `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(uniqueSize(selected))}.`, bold: true },
+    ...exactLines(options.exact, theme),
     ...disposalLines(selected, options, theme),
     'Items with a $ line run that tool command instead of deleting files. Press f on an item in the list to browse its files.',
   ];

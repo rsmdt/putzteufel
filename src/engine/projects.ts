@@ -6,7 +6,7 @@ import {
   type Plugin,
   type ScanContext,
   type Target,
-  diskUsage,
+  measure,
   execFileAsync,
   exists,
   limiter,
@@ -147,7 +147,9 @@ export class ProjectsScanner implements Plugin {
   }
 
   async measure(target: Target): Promise<void> {
-    target.size = await diskUsage(target.paths);
+    const sized = await measure(target.paths);
+    target.size = sized.size;
+    target.linkedBytes = sized.linkedBytes;
     const newest = target.project ? await this.newestSourceMtime(target.project) : 0;
     const fallback = newest || (await lstat(target.paths[0]).then((s) => s.mtimeMs, () => Date.now()));
     target.ageDays = (Date.now() - fallback) / 86_400_000;

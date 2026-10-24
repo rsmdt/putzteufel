@@ -4,7 +4,7 @@ import type { Target } from '../src/core/index.ts';
 import { coveredIn, overlapIndex, uniqueSize } from '../src/engine/overlap.ts';
 
 let id = 0;
-const t = (plugin: string, paths: string[], size: number, fallback = false): Target => ({ id: ++id, plugin, group: 'G', label: paths[0] ?? plugin, paths, sizePaths: [], listed: paths.length ? [] : ['x'], commands: [], impact: 'regenerates', selected: true, size, fallback: fallback || undefined });
+const t = (plugin: string, paths: string[], size: number, fallback = false): Target => ({ id: ++id, key: String(id), plugin, group: 'G', label: paths[0] ?? plugin, paths, sizePaths: [], listed: paths.length ? [] : ['x'], commands: [], impact: 'regenerates', selected: true, size, fallback: fallback || undefined });
 
 test('nested folders are counted under the outer one', () => {
   const outer = t('Node', ['/p/node_modules'], 100);

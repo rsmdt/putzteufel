@@ -1,47 +1,96 @@
+import { spawn } from 'node:child_process';
 import { lstat, readdir } from 'node:fs/promises';
+import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { exists, tildify } from './paths.ts';
 import { describeCommand, execFileAsync } from './shell.ts';
 import type { Entry, Target } from './types.ts';
 
-const sizeCache = new Map<string, Promise<number>>();
+export interface Measurement {
+  size: number;
+  linkedBytes: number;
+  files: number;
+  newest?: number;
+}
+
+export interface Freed {
+  total: number;
+  freed: number;
+}
+
+type Row = { key: string; bytes: number; links: number; mtime: number };
+
+const STAT = process.platform === 'darwin' ? "stat -f '%d:%i %b %l %m'" : "stat -c '%d:%i %b %h %Y'";
+
+function walk(paths: string[], onRow: (row: Row) => void): Promise<void> {
+  if (!paths.length) return Promise.resolve();
+  return new Promise((resolve) => {
+    const child = spawn('sh', ['-c', `find "$@" -type f -print0 2>/dev/null | xargs -0 ${STAT} 2>/dev/null`, 'sh', ...paths], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const lines = createInterface({ input: child.stdout });
+    lines.on('line', (line) => {
+      const [key, blocks, links, mtime] = line.split(' ');
+      if (key && blocks) onRow({ key, bytes: Number(blocks) * 512, links: Number(links), mtime: Number(mtime) * 1000 });
+    });
+    child.on('close', () => resolve());
+    child.on('error', () => resolve());
+  });
+}
+
+const measured = new Map<string, Promise<Measurement>>();
 
 export function forgetSizes(): void {
-  sizeCache.clear();
+  measured.clear();
 }
 
-function sizeOf(p: string): Promise<number> {
-  if (!sizeCache.has(p)) {
-    sizeCache.set(
+function measureOne(p: string): Promise<Measurement> {
+  if (!measured.has(p)) {
+    const result: Measurement = { size: 0, linkedBytes: 0, files: 0 };
+    const linked = new Set<string>();
+    measured.set(
       p,
-      execFileAsync('du', ['-sk', '--', p], { maxBuffer: 16 * 1024 * 1024 }).then(
-        (r) => Number.parseInt(r.stdout, 10) * 1024 || 0,
-        (e: { stdout?: string }) => Number.parseInt(e.stdout ?? '', 10) * 1024 || 0,
-      ),
+      walk([p], (row) => {
+        if (row.links > 1) {
+          if (linked.has(row.key)) return;
+          linked.add(row.key);
+          result.linkedBytes += row.bytes;
+        }
+        result.size += row.bytes;
+        result.files++;
+        if (!result.newest || row.mtime > result.newest) result.newest = row.mtime;
+      }).then(() => result),
     );
   }
-  return sizeCache.get(p)!;
+  return measured.get(p)!;
 }
 
-export async function diskUsage(paths: string[]): Promise<number> {
-  const present = (await Promise.all(paths.map(async (p) => ((await exists(p)) ? p : null)))).filter((p): p is string => p !== null);
-  const sizes = await Promise.all([...new Set(present)].map(sizeOf));
-  return sizes.reduce((n, s) => n + s, 0);
-}
-
-export async function newestMtime(paths: string[]): Promise<number | undefined> {
-  const times = await Promise.all(
-    paths.map(async (p) => {
-      const stat = await lstat(p).catch(() => null);
-      if (!stat) return 0;
-      if (!stat.isDirectory()) return stat.mtimeMs;
-      const names = await readdir(p).catch(() => [] as string[]);
-      const children = await Promise.all(names.slice(0, 2000).map((n) => lstat(path.join(p, n)).then((s) => s.mtimeMs, () => 0)));
-      return Math.max(stat.mtimeMs, ...children);
-    }),
+export async function measure(paths: string[]): Promise<Measurement> {
+  const present = (await Promise.all([...new Set(paths)].map(async (p) => ((await exists(p)) ? p : null)))).filter((p): p is string => p !== null);
+  const parts = await Promise.all(present.map(measureOne));
+  return parts.reduce<Measurement>(
+    (all, m) => ({ size: all.size + m.size, linkedBytes: all.linkedBytes + m.linkedBytes, files: all.files + m.files, newest: Math.max(all.newest ?? 0, m.newest ?? 0) || undefined }),
+    { size: 0, linkedBytes: 0, files: 0 },
   );
-  const newest = Math.max(0, ...times);
-  return newest || undefined;
+}
+
+export async function exactFreed(paths: string[]): Promise<Freed> {
+  const seen = new Map<string, { bytes: number; links: number; count: number }>();
+  let single = 0;
+  await walk([...new Set(paths)], (row) => {
+    if (row.links <= 1) {
+      single += row.bytes;
+      return;
+    }
+    const entry = seen.get(row.key);
+    if (entry) entry.count++;
+    else seen.set(row.key, { bytes: row.bytes, links: row.links, count: 1 });
+  });
+  let total = single;
+  let freed = single;
+  for (const e of seen.values()) {
+    total += e.bytes;
+    if (e.count >= e.links) freed += e.bytes;
+  }
+  return { total, freed };
 }
 
 export async function entrySizes(paths: string[]): Promise<Entry[]> {

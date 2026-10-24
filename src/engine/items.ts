@@ -6,8 +6,7 @@ import {
   type ScanContext,
   type Target,
   type TargetDraft,
-  diskUsage,
-  newestMtime,
+  measure,
   expandHome,
   exists,
   matchesAny,
@@ -118,9 +117,11 @@ export class ItemPlugin implements Plugin {
   }
 
   async measure(target: Target): Promise<void> {
-    const measured = [...target.paths, ...target.sizePaths];
-    if (measured.length) target.size = await diskUsage(measured);
-    const newest = target.paths.length ? await newestMtime(target.paths) : undefined;
+    if (!target.paths.length && !target.sizePaths.length) return;
+    const sized = await measure([...target.paths, ...target.sizePaths]);
+    target.size = sized.size;
+    target.linkedBytes = sized.linkedBytes;
+    const { newest } = await measure(target.paths);
     if (newest !== undefined) target.ageDays = (Date.now() - newest) / 86_400_000;
   }
 }

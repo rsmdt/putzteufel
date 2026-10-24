@@ -59,7 +59,8 @@ function RowLine({ row, active, young, shared, width, color, highlight }: RowPro
   const also = shared(t);
   const alsoText = also.length ? ` also: ${also.join(', ')}` : '';
   const tags = ` ${IMPACTS[t.impact].tag}${recent ? ' recent' : ''}${alsoText}`;
-  const head = `${t.selected ? '[x]' : '[ ]'} ${human(t.size).padStart(7)} ${age.padStart(5)}  `;
+  const size = t.size === undefined ? '…' : `${t.estimated ? '≈' : ''}${human(t.size)}`;
+  const head = `${t.selected ? '[x]' : '[ ]'} ${size.padStart(7)} ${age.padStart(5)}  `;
   const detail = targetDetail(t);
   const label = tildify(t.label);
   const room = Math.max(8, width - 8 - head.length - tags.length - Math.min(detail.length, 24) - 2);

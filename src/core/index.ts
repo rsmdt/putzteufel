@@ -7,3 +7,4 @@ export * from './format.ts';
 export * from './clean.ts';
 export * from './groups.ts';
 export * from './oplog.ts';
+export * from './key.ts';

@@ -121,7 +121,7 @@ test('a tool whose own lookup fails falls back to its default folder and is not 
 test('a failing item asks what to do: retry, skip, skip all or abort', async () => {
   const root = tempDir();
   write(root, { 'one/a': 'x', 'two/b': 'x', 'three/c': 'x', flag: '' });
-  const target = (id: number, name: string, run: string): Target => ({ id, plugin: 'P', group: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
+  const target = (id: number, name: string, run: string): Target => ({ id, key: String(id), plugin: 'P', group: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
   const flaky = `if [ -f "${root}/flag" ]; then rm "${root}/flag"; exit 1; fi; rm -rf "${root}/one"`;
   const asked: string[] = [];
   const answers = ['retry', 'abort'] as const;
