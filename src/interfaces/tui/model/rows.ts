@@ -16,7 +16,7 @@ export type Row =
 
 export type Groups = [string, [string, Target[]][]][];
 
-export interface Filtered {
+interface Filtered {
   groups: Groups;
   highlights: Map<string, number[]>;
 }
@@ -117,4 +117,8 @@ export function targetDetail(t: Target): string {
   if (t.tool && !t.tool.installed && t.tool.clean.length) return t.tool.broken ? `${t.tool.bin} failed` : `${t.tool.bin} not installed`;
   if (t.commands.length) return `via ${t.commands[0].run}`;
   return '';
+}
+
+export function ownerLabel(t: Target): string {
+  return t.item && t.item !== t.label && !t.label.startsWith('/') && !t.label.startsWith('~') ? `${t.plugin} ${t.item}` : t.plugin;
 }
