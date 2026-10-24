@@ -1,5 +1,5 @@
-import { GROUPS } from '../core/index.ts';
-import { brew, definePlugin } from '../engine/define.ts';
+import { GROUPS } from '../domain/groups.ts';
+import { brew, definePlugin } from './api.ts';
 
 export default definePlugin({
   name: 'yarn',

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { test } from 'bun:test';
 import { act } from 'react';
-import { loadState, saveState, statePath } from '../src/config/state.ts';
+import { loadState, saveState, statePath } from '../src/infrastructure/store/state.ts';
 import { builtinPlugins } from '../src/plugins/index.ts';
-import { projectsScanner } from '../src/engine/build.ts';
-import { singleItem } from '../src/engine/build.ts';
+import { projectsScanner } from '../src/infrastructure/plugins/build.ts';
+import { singleItem } from '../src/infrastructure/plugins/build.ts';
 import { tempDir, write } from './fixture.ts';
 import { start, twoProjects } from './harness.tsx';
 

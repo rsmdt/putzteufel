@@ -1,5 +1,5 @@
-import { GROUPS } from '../core/index.ts';
-import { definePlugin } from '../engine/define.ts';
+import { GROUPS } from '../domain/groups.ts';
+import { definePlugin } from './api.ts';
 
 export default definePlugin({
   name: '.NET',

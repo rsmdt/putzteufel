@@ -1,5 +1,7 @@
-import { GROUPS, type TargetDraft, shell } from '../core/index.ts';
-import { definePlugin } from '../engine/define.ts';
+import { GROUPS } from '../domain/groups.ts';
+import { type TargetDraft } from '../domain/types.ts';
+import { shell } from '../infrastructure/shell.ts';
+import { definePlugin } from './api.ts';
 
 type Row = Record<string, string>;
 

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { fuzzyMatch } from '../src/tui/fuzzy.ts';
-import { type Hint, fitHints, hintsWidth } from '../src/tui/hints.ts';
-import { BINDINGS, footerHints, helpSections, keyToken, resolve } from '../src/tui/keys.ts';
-import { sortBy } from '../src/tui/sort.ts';
+import { fuzzyMatch } from '../src/domain/fuzzy.ts';
+import { type Hint, fitHints, hintsWidth } from '../src/interfaces/tui/hints.ts';
+import { BINDINGS, footerHints, helpSections, keyToken, resolve } from '../src/interfaces/tui/keys.ts';
+import { sortBy } from '../src/domain/sort.ts';
 
 const hints: Hint[] = [
   { key: '↑↓', label: 'move', priority: 'normal' },

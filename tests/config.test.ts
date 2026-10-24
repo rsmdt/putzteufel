@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { test } from 'node:test';
-import { loadConfig } from '../src/config/load.ts';
-import type { Target } from '../src/core/index.ts';
-import { pluginsFrom, singleItem } from '../src/engine/build.ts';
-import { overlapIndex, uniqueSize } from '../src/engine/overlap.ts';
-import { scanAll } from '../src/engine/scan.ts';
+import { test } from 'bun:test';
+import { loadConfig } from '../src/infrastructure/config/load.ts';
+import { type Target } from '../src/domain/types.ts';
+import { pluginsFrom, singleItem } from '../src/infrastructure/plugins/build.ts';
+import { overlapIndex, uniqueSize } from '../src/domain/overlap.ts';
+import { scanAll } from '../src/application/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 async function setup() {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import { builtinPlugins } from '../src/plugins/index.ts';
-import type { Target } from '../src/core/index.ts';
-import { projectsScanner } from '../src/engine/build.ts';
-import { scanAll } from '../src/engine/scan.ts';
+import { type Target } from '../src/domain/types.ts';
+import { projectsScanner } from '../src/infrastructure/plugins/build.ts';
+import { scanAll } from '../src/application/scan.ts';
 import { projectTree } from './fixture.ts';
 
 async function scanProjects(root: string, recentDays = 7): Promise<Target[]> {

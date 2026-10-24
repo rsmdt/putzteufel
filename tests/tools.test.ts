@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'bun:test';
-import { type Target, forgetWhich } from '../src/core/index.ts';
-import { singleItem } from '../src/engine/build.ts';
-import { missingTools, runClean } from '../src/engine/run.ts';
-import { scanAll } from '../src/engine/scan.ts';
+import { type Target } from '../src/domain/types.ts';
+import { forgetWhich } from '../src/infrastructure/shell.ts';
+import { singleItem } from '../src/infrastructure/plugins/build.ts';
+import { missingTools } from '../src/domain/run-plan.ts';
+import { runClean } from '../src/application/clean.ts';
+import { scanAll } from '../src/application/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 function setup() {

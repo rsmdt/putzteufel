@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { Target } from '../src/core/index.ts';
-import { coveredIn, overlapIndex, uniqueSize } from '../src/engine/overlap.ts';
+import { type Target } from '../src/domain/types.ts';
+import { coveredIn, overlapIndex, uniqueSize } from '../src/domain/overlap.ts';
 
 let id = 0;
 const t = (plugin: string, paths: string[], size: number, fallback = false): Target => ({ id: ++id, key: String(id), plugin, group: 'G', label: paths[0] ?? plugin, paths, sizePaths: [], listed: paths.length ? [] : ['x'], commands: [], impact: 'regenerates', selected: true, size, fallback: fallback || undefined });

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { linkSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'bun:test';
-import { type Target, exactFreed, forgetSizes, measure } from '../src/core/index.ts';
-import { singleItem } from '../src/engine/build.ts';
-import { scanAll } from '../src/engine/scan.ts';
+import { type Target } from '../src/domain/types.ts';
+import { exactFreed, forgetSizes, measure } from '../src/infrastructure/measure.ts';
+import { singleItem } from '../src/infrastructure/plugins/build.ts';
+import { scanAll } from '../src/application/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 function linkedTree() {

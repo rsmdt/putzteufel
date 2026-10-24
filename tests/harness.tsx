@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach } from 'bun:test';
 import { testRender } from '@opentui/react/test-utils';
 import { act } from 'react';
-import type { Plugin } from '../src/core/index.ts';
+import { type Plugin } from '../src/domain/types.ts';
 import { builtinPlugins } from '../src/plugins/index.ts';
-import { projectsScanner } from '../src/engine/build.ts';
-import { App, type AppProps } from '../src/tui/App.tsx';
+import { projectsScanner } from '../src/infrastructure/plugins/build.ts';
+import { App, type AppProps } from '../src/interfaces/tui/App.tsx';
 import { tempDir, write } from './fixture.ts';
 
 process.env.PUTZTEUFEL_LOG = `${tempDir()}/operations.log`;

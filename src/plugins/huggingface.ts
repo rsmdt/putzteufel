@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { GROUPS } from '../core/index.ts';
-import { brew, definePlugin } from '../engine/define.ts';
+import { GROUPS } from '../domain/groups.ts';
+import { brew, definePlugin } from './api.ts';
 
 export function repoReference(folder: string): string {
   const [kind, ...name] = path.basename(folder).split('--');

@@ -1,4 +1,4 @@
-import type { PluginDef } from '../engine/define.ts';
+import { type PluginDef } from './api.ts';
 import appCaches from './app-caches.ts';
 import bun from './bun.ts';
 import bundler from './bundler.ts';

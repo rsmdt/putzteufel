@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'node:test';
-import { HOME, type Target, cleanTarget, disposalFor } from '../src/core/index.ts';
+import { test } from 'bun:test';
+import { HOME } from '../src/domain/paths.ts';
+import { type Target } from '../src/domain/types.ts';
+import { cleanTarget } from '../src/infrastructure/remove.ts';
+import { disposalFor } from '../src/domain/disposal.ts';
 
 const OPTIONS = { useTrash: false, trashAvailable: false };
 import { tempDir, write } from './fixture.ts';

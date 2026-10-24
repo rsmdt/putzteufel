@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { chmodSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import { builtinPlugins } from '../src/plugins/index.ts';
-import { type Target, describeCommand } from '../src/core/index.ts';
-import { pluginsFrom } from '../src/engine/build.ts';
+import { type Target } from '../src/domain/types.ts';
+import { describeCommand } from '../src/domain/command.ts';
+import { pluginsFrom } from '../src/infrastructure/plugins/build.ts';
 import { repoReference } from '../src/plugins/huggingface.ts';
-import { scanAll } from '../src/engine/scan.ts';
+import { scanAll } from '../src/application/scan.ts';
 import { tempDir, write } from './fixture.ts';
 
 const FAKE_DOCKER = `#!/bin/sh

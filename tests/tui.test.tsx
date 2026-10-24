@@ -4,8 +4,8 @@ import path from 'node:path';
 import { test } from 'bun:test';
 import { act } from 'react';
 import { chmodSync, readFileSync } from 'node:fs';
-import { forgetWhich } from '../src/core/index.ts';
-import { singleItem } from '../src/engine/build.ts';
+import { forgetWhich } from '../src/infrastructure/shell.ts';
+import { singleItem } from '../src/infrastructure/plugins/build.ts';
 import { tempDir, write } from './fixture.ts';
 import { start, twoProjects } from './harness.tsx';
 

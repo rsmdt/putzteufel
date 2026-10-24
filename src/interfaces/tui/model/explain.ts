@@ -1,0 +1,117 @@
+import { type Freed } from '../../../infrastructure/measure.ts';
+import { type Hooks, type Target } from '../../../domain/types.ts';
+import { IMPACTS, IMPACT_ORDER, isRecent } from '../../../domain/impact.ts';
+import { describeCommand } from '../../../domain/command.ts';
+import { disposalFor } from '../../../domain/disposal.ts';
+import { human } from '../../../domain/format.ts';
+import { tildify } from '../../../domain/paths.ts';
+import { coveredIn, uniqueSize } from '../../../domain/overlap.ts';
+import { planNotes } from '../../../domain/plan.ts';
+import { actionFor, missingTools } from '../../../domain/run-plan.ts';
+import { type Theme } from '../theme.ts';
+
+export type Line = string | { text: string; fg?: string; bold?: boolean };
+
+export function impactLines(t: Target, recentDays: number, minAge: number, theme: Theme): Line[] {
+  const info = IMPACTS[t.impact];
+  const color = theme.impact[t.impact];
+  const lines: Line[] = [{ text: `If removed (${info.tag}): ${info.meaning}`, fg: color }];
+  if (t.note) lines.push({ text: `  ${t.note}`, fg: color });
+  if (!info.preselected) lines.push(`Not selected by default: ${info.tag} items are only removed when you pick them. ? explains the tags.`);
+  else if (t.project !== undefined && isRecent(t, recentDays)) lines.push(`Not selected by default: the project was edited in the last ${recentDays} days.`);
+  else if (isRecent(t, minAge)) lines.push(`Not selected by default: younger than the ${minAge}-day age threshold.`);
+  else lines.push(`Selected by default: ${info.tag} items are recreated without losing anything.`);
+  return lines;
+}
+
+export function toolLines(t: Target, theme: Theme): Line[] {
+  if (!t.tool?.clean.length) return t.commands.length ? [`Cleaned by: $ ${describeCommand(t.commands[0])}`] : ['Cleaned by deleting the files listed below.'];
+  if (t.tool.installed) return [`Cleaned by its own tool: $ ${describeCommand(t.tool.clean[0])}`];
+  if (t.tool.broken) return [{ text: `${t.tool.bin} is installed but failed (${t.tool.broken}): its default folders are deleted directly.`, fg: theme.warn }];
+  return [
+    { text: `${t.tool.bin} is not installed: the folders are deleted directly.`, fg: theme.warn },
+    ...(t.tool.install ? [{ text: `d offers to install it first (${t.tool.install}) and clean with $ ${t.tool.clean[0].run}`, fg: theme.warn }] : []),
+  ];
+}
+
+export function legendLines(recentDays: number, theme: Theme): Line[] {
+  return [
+    { text: 'What the tags mean: what happens to an item after it is removed.', bold: true },
+    ...IMPACT_ORDER.flatMap((impact): Line[] => {
+      const info = IMPACTS[impact];
+      return [{ text: `  ${info.tag.padEnd(12)} ${info.meaning}`, fg: theme.impact[impact] }, `  ${''.padEnd(12)} ${info.preselected ? 'Selected by default.' : 'Never selected by default.'}`];
+    }),
+    { text: `  ${'recent'.padEnd(12)} A project edited in the last ${recentDays} days, or an item younger than the [ ] age threshold.`, fg: theme.accent },
+    `  ${''.padEnd(12)} Never selected by default.`,
+    '',
+    'The preview explains the item at the cursor. Press f to see every file before you decide.',
+    'Nothing is removed until d shows the review screen and you press y.',
+  ];
+}
+
+export interface ReviewOptions {
+  useTrash: boolean;
+  trashAvailable: boolean;
+  install: Set<string>;
+  uninstallAfter: boolean;
+  hooks: Hooks;
+  minAge: number;
+  exact?: Freed | 'pending';
+}
+
+export function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
+  const color = { info: theme.text, warn: theme.warn, error: theme.error };
+  return planNotes(selected, options, options.install).map((n) => ({ text: n.text, fg: color[n.level], bold: n.level === 'error' }));
+}
+
+function exactLines(exact: Freed | 'pending' | undefined, theme: Theme): Line[] {
+  if (!exact) return [];
+  if (exact === 'pending') return [{ text: 'Measuring exactly how much space this frees…', fg: theme.muted }];
+  const kept = exact.total - exact.freed;
+  return [{ text: `Exactly ${human(exact.total)} on disk, each file counted once; ${human(exact.freed)} is freed${kept > 0 ? `. ${human(kept)} stays, because those files have hard links outside the selection` : ''}.`, fg: kept > 0 ? theme.warn : theme.text }];
+}
+
+export function reviewLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
+  const { useTrash, install, uninstallAfter, hooks } = options;
+  const lines: Line[] = [
+    { text: `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(uniqueSize(selected))}.`, bold: true },
+    ...exactLines(options.exact, theme),
+    ...disposalLines(selected, options, theme),
+    'Items with a $ line run that tool command instead of deleting files. Press f on an item in the list to browse its files.',
+  ];
+  for (const impact of IMPACT_ORDER) {
+    const group = selected.filter((t) => t.impact === impact);
+    if (group.length) lines.push({ text: `  ${String(group.length).padStart(4)} ${IMPACTS[impact].tag.padEnd(12)} ${human(uniqueSize(group)).padStart(7)}  ${IMPACTS[impact].meaning}`, fg: theme.impact[impact] });
+  }
+  if (selected.some((t) => t.impact === 'dataloss')) lines.push({ text: 'Data loss items cannot be recovered. Check them below before pressing y.', fg: theme.impact.dataloss });
+  const tools = missingTools(selected).filter((t) => install.has(t.bin));
+  const steps: Line[] = [
+    ...(hooks.before ? [`  before hook:  $ ${hooks.before}`] : []),
+    ...tools.map((t) => ({ text: `  install:      $ ${t.install}`, fg: theme.warn })),
+    ...(uninstallAfter ? tools.filter((t) => t.uninstall).map((t) => ({ text: `  then remove:  $ ${t.uninstall}  (after cleaning; dependencies brew pulled in stay)`, fg: theme.warn })) : []),
+    ...(hooks.after ? [`  after hook:   $ ${hooks.after}`] : []),
+  ];
+  if (steps.length) lines.push('', 'Run steps:', ...steps);
+  const covered = coveredIn(selected);
+  if (covered.size) lines.push({ text: `${covered.size} item(s) lie inside another selected item; they are counted and cleaned once, by that item.`, fg: theme.warn });
+  lines.push('');
+  for (const t of [...selected].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))) {
+    const notable = t.impact !== 'regenerates' && t.impact !== 'rebuild';
+    lines.push({ text: `${human(t.size).padStart(7)}  ${IMPACTS[t.impact].tag.padEnd(12)} [${t.plugin}] ${tildify(t.label)}`, fg: notable ? theme.impact[t.impact] : undefined });
+    const action = actionFor(t, install);
+    const cover = covered.get(t.id);
+    if (cover) {
+      lines.push({ text: `           counted under ${cover.plugin} (${tildify(cover.label)}); skipped when that runs`, fg: theme.warn });
+      continue;
+    }
+    if (t.hooks?.before) lines.push(`           before: $ ${t.hooks.before}`);
+    if (action.kind === 'commands') for (const c of action.commands) lines.push(`           $ ${describeCommand(c, options.minAge)}${action.afterInstall ? '   (after install)' : ''}`);
+    else {
+      if (action.missing) lines.push({ text: `           ${action.missing} not installed: the folders below are deleted directly`, fg: theme.warn });
+      for (const p of t.paths) lines.push({ text: `           - ${tildify(p)}  ${disposalFor(t, p, options) === 'trash' ? '→ Trash' : 'deleted permanently'}`, fg: disposalFor(t, p, options) === 'trash' ? undefined : theme.muted });
+    }
+    if (t.hooks?.after) lines.push(`           after:  $ ${t.hooks.after}`);
+    for (const l of t.listed) lines.push(`           · ${l}`);
+  }
+  return lines;
+}
