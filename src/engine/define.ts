@@ -6,7 +6,7 @@ export interface ItemSpec {
   paths?: string[];
   exclude?: string[];
   list?: string;
-  clean?: string;
+  clean?: string | ((path: string) => string);
   sizePaths?: string[];
   requires?: string[];
   impact?: Impact;

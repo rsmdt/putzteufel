@@ -34,7 +34,8 @@ export function checkShape(raw: Record<string, unknown>, allowed: string[], what
   checkStrings(raw.tool, ['bin', 'install', 'uninstall'], `${what}: "tool"`);
   if (raw.tool && typeof (raw.tool as { bin?: unknown }).bin !== 'string') throw new ConfigError(`${what}: "tool" needs "bin", the binary to look for on PATH`);
   if ('icons' in raw && !['unicode', 'ascii', 'nerd'].includes(raw.icons as string)) throw new ConfigError(`${what}: "icons" must be "unicode", "ascii" or "nerd"`);
-  for (const key of ['list', 'clean', 'group', 'description', 'theme']) {
+  if ('clean' in raw && typeof raw.clean !== 'string' && typeof raw.clean !== 'function') throw new ConfigError(`${what}: "clean" must be a shell command, or a function from a matched path to one`);
+  for (const key of ['list', 'group', 'description', 'theme']) {
     if (key in raw && typeof raw[key] !== 'string') throw new ConfigError(`${what}: "${key}" must be a string`);
   }
 }

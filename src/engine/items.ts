@@ -93,13 +93,17 @@ export class ItemPlugin implements Plugin {
       });
     }
     const installed = found && !broken;
-    const clean = spec.clean ? [{ run: spec.clean }] : [];
-    const tool = spec.tool ? { ...spec.tool, installed, broken, clean } : undefined;
-    const commands = installed ? clean : [];
-    if (!spec.list && !spec.clean) {
-      for (const p of matched) emit({ label: p, paths: [p], impact, note, hooks, item });
+    if (!spec.list && typeof spec.clean !== 'string') {
+      for (const p of matched) {
+        const own = typeof spec.clean === 'function' ? [{ run: spec.clean(p) }] : [];
+        const tool = spec.tool ? { ...spec.tool, installed, broken, clean: own } : undefined;
+        emit({ label: p, paths: [p], impact, note, hooks, item, tool, commands: installed ? own : [] });
+      }
       return;
     }
+    const clean = typeof spec.clean === 'string' ? [{ run: spec.clean }] : [];
+    const tool = spec.tool ? { ...spec.tool, installed, broken, clean } : undefined;
+    const commands = installed ? clean : [];
     const lines = (output ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
     const listedPaths: string[] = [];
     const listed: string[] = [];
@@ -115,8 +119,8 @@ export class ItemPlugin implements Plugin {
 
   async measure(target: Target): Promise<void> {
     const measured = [...target.paths, ...target.sizePaths];
-    target.size = measured.length ? await diskUsage(measured) : undefined;
+    if (measured.length) target.size = await diskUsage(measured);
     const newest = target.paths.length ? await newestMtime(target.paths) : undefined;
-    target.ageDays = newest === undefined ? undefined : (Date.now() - newest) / 86_400_000;
+    if (newest !== undefined) target.ageDays = (Date.now() - newest) / 86_400_000;
   }
 }
