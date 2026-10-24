@@ -1,4 +1,4 @@
-import { type Hooks, IMPACTS, IMPACT_ORDER, type Target, describeCommand, human, isRecent, tildify } from '../../core/index.ts';
+import { type Hooks, IMPACTS, IMPACT_ORDER, type Target, describeCommand, disposalFor, human, isRecent, tildify } from '../../core/index.ts';
 import { coveredIn, uniqueSize } from '../../engine/overlap.ts';
 import { actionFor, missingTools } from '../../engine/run.ts';
 import type { Theme } from '../theme.ts';
@@ -42,9 +42,32 @@ export function legendLines(recentDays: number, theme: Theme): Line[] {
   ];
 }
 
-export function reviewLines(selected: Target[], useTrash: boolean, install: Set<string>, uninstallAfter: boolean, hooks: Hooks, theme: Theme): Line[] {
+export interface ReviewOptions {
+  useTrash: boolean;
+  trashAvailable: boolean;
+  install: Set<string>;
+  uninstallAfter: boolean;
+  hooks: Hooks;
+  minAge: number;
+}
+
+export function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
+  const removed = selected.filter((t) => actionFor(t, options.install).kind === 'delete' && t.paths.length);
+  const permanent = removed.flatMap((t) => t.paths.filter((p) => disposalFor(t, p, options) === 'delete'));
+  const lostByCommand = selected.filter((t) => t.impact === 'dataloss' && actionFor(t, options.install).kind === 'commands');
+  const lines: Line[] = [];
+  if (!options.trashAvailable && permanent.length) lines.push({ text: `The Trash is not available here: ${permanent.length} folder(s) will be deleted permanently and cannot be recovered.`, fg: theme.error, bold: true });
+  else if (permanent.length) lines.push({ text: `No Trash: ${permanent.length} folder(s) will be deleted permanently and cannot be recovered. Press n, then t for Trash mode.`, fg: theme.error, bold: true });
+  if (options.trashAvailable && !options.useTrash && removed.some((t) => t.impact === 'dataloss')) lines.push({ text: 'Data loss folders go to the Trash even in delete mode.', fg: theme.warn });
+  for (const t of lostByCommand) lines.push({ text: `${t.plugin} / ${t.item ?? t.label} runs a command; what it removes cannot go to the Trash.`, fg: theme.error });
+  return lines;
+}
+
+export function reviewLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
+  const { useTrash, install, uninstallAfter, hooks } = options;
   const lines: Line[] = [
     { text: `${useTrash ? 'Move to Trash' : 'Permanently delete'} ${selected.length} item(s), about ${human(uniqueSize(selected))}.`, bold: true },
+    ...disposalLines(selected, options, theme),
     'Items with a $ line run that tool command instead of deleting files. Press f on an item in the list to browse its files.',
   ];
   for (const impact of IMPACT_ORDER) {
@@ -73,10 +96,10 @@ export function reviewLines(selected: Target[], useTrash: boolean, install: Set<
       continue;
     }
     if (t.hooks?.before) lines.push(`           before: $ ${t.hooks.before}`);
-    if (action.kind === 'commands') for (const c of action.commands) lines.push(`           $ ${describeCommand(c)}${action.afterInstall ? '   (after install)' : ''}`);
+    if (action.kind === 'commands') for (const c of action.commands) lines.push(`           $ ${describeCommand(c, options.minAge)}${action.afterInstall ? '   (after install)' : ''}`);
     else {
       if (action.missing) lines.push({ text: `           ${action.missing} not installed: the folders below are deleted directly`, fg: theme.warn });
-      for (const p of t.paths) if (p !== t.label || action.missing) lines.push(`           - ${tildify(p)}`);
+      for (const p of t.paths) lines.push({ text: `           - ${tildify(p)}  ${disposalFor(t, p, options) === 'trash' ? '→ Trash' : 'deleted permanently'}`, fg: disposalFor(t, p, options) === 'trash' ? undefined : theme.muted });
     }
     if (t.hooks?.after) lines.push(`           after:  $ ${t.hooks.after}`);
     for (const l of t.listed) lines.push(`           · ${l}`);

@@ -56,7 +56,7 @@ test('a missing tool still finds its default folder and is offered for install',
 test('install, native clean, hooks and uninstall run in order', async () => {
   const { root, bin, journal, spec } = setup();
   const [target] = await scan(spec);
-  const result = await runClean({ targets: [target], install: missingTools([target]), uninstallAfter: true, hooks: { before: `echo "run before" >> "${journal}"`, after: `echo "run after" >> "${journal}"` }, useTrash: false });
+  const result = await runClean({ targets: [target], install: missingTools([target]), uninstallAfter: true, hooks: { before: `echo "run before" >> "${journal}"`, after: `echo "run after" >> "${journal}"` }, useTrash: false, trashAvailable: false });
   assert.deepEqual(readFileSync(journal, 'utf8').trim().split('\n'), ['run before', 'brew install fakecache', 'plugin before', 'fakecache clean', 'plugin after', 'brew uninstall fakecache', 'run after']);
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), false);
   assert.equal(existsSync(path.join(bin, 'fakecache')), false);
@@ -68,7 +68,7 @@ test('install, native clean, hooks and uninstall run in order', async () => {
 test('an unchecked tool falls back to deleting the folder; a failed install skips the item', async () => {
   const { root, journal, spec } = setup();
   const [target] = await scan(spec);
-  const direct = await runClean({ targets: [target], install: [], uninstallAfter: true, hooks: {}, useTrash: false });
+  const direct = await runClean({ targets: [target], install: [], uninstallAfter: true, hooks: {}, useTrash: false, trashAvailable: false });
   assert.equal(direct.steps.find((s) => s.kind === 'item')?.detail, 'Deleted 1 folder');
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), false);
   assert.ok(!readFileSync(journal, 'utf8').includes('brew'));
@@ -76,7 +76,7 @@ test('an unchecked tool falls back to deleting the folder; a failed install skip
   write(root, { 'cache/fakecache/blob': 'x' });
   const [again] = await scan(spec);
   const broken = { ...again.tool!, install: 'false' };
-  const failed = await runClean({ targets: [again], install: [broken], uninstallAfter: true, hooks: {}, useTrash: false });
+  const failed = await runClean({ targets: [again], install: [broken], uninstallAfter: true, hooks: {}, useTrash: false, trashAvailable: false });
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), true);
   const kinds = (kind: string) => failed.steps.find((s) => s.kind === kind)!;
   assert.equal(kinds('install').state, 'failed');
@@ -87,7 +87,7 @@ test('an unchecked tool falls back to deleting the folder; a failed install skip
 test('a failing before hook stops the run before anything is removed', async () => {
   const { root, spec } = setup();
   const [target] = await scan(spec);
-  const stopped = await runClean({ targets: [target], install: [], uninstallAfter: false, hooks: { before: 'exit 3' }, useTrash: false });
+  const stopped = await runClean({ targets: [target], install: [], uninstallAfter: false, hooks: { before: 'exit 3' }, useTrash: false, trashAvailable: false });
   assert.equal(existsSync(path.join(root, 'cache/fakecache')), true);
   assert.equal(stopped.aborted, true);
   assert.equal(stopped.steps[0].state, 'failed');
@@ -126,7 +126,7 @@ test('a failing item asks what to do: retry, skip, skip all or abort', async () 
   const asked: string[] = [];
   const answers = ['retry', 'abort'] as const;
   const result = await runClean(
-    { targets: [target(1, 'one', flaky), target(2, 'two', 'exit 1'), target(3, 'three', `rm -rf "${root}/three"`)], install: [], uninstallAfter: false, hooks: { after: 'true' }, useTrash: false },
+    { targets: [target(1, 'one', flaky), target(2, 'two', 'exit 1'), target(3, 'three', `rm -rf "${root}/three"`)], install: [], uninstallAfter: false, hooks: { after: 'true' }, useTrash: false, trashAvailable: false },
     { onFailure: async (step) => (asked.push(step.label), answers[asked.length - 1]) },
   );
   assert.equal(asked.length, 2);
@@ -139,7 +139,7 @@ test('a failing item asks what to do: retry, skip, skip all or abort', async () 
   write(root, { 'four/d': 'x' });
   let questions = 0;
   const skipping = await runClean(
-    { targets: [target(4, 'x1', 'exit 1'), target(5, 'x2', 'exit 1'), target(6, 'four', `rm -rf "${root}/four"`)], install: [], uninstallAfter: false, hooks: {}, useTrash: false },
+    { targets: [target(4, 'x1', 'exit 1'), target(5, 'x2', 'exit 1'), target(6, 'four', `rm -rf "${root}/four"`)], install: [], uninstallAfter: false, hooks: {}, useTrash: false, trashAvailable: false },
     { onFailure: async () => (questions++, 'skipAll') },
   );
   assert.equal(questions, 1);

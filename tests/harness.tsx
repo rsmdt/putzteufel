@@ -8,6 +8,8 @@ import { projectsScanner } from '../src/engine/build.ts';
 import { App, type AppProps } from '../src/tui/App.tsx';
 import { tempDir, write } from './fixture.ts';
 
+process.env.PUTZTEUFEL_LOG = `${tempDir()}/operations.log`;
+
 let dispose: (() => void) | undefined;
 afterEach(() => dispose?.());
 

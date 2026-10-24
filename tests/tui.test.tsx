@@ -20,7 +20,8 @@ test('select, confirm and clean through the TUI', async () => {
   await waitFor((f) => f.includes('1 selected'), 'deselect');
 
   await press('d');
-  await waitFor((f) => f.includes('Permanently delete 1 item'), 'confirm screen');
+  await waitFor((f) => f.includes('Permanently delete 1 item') && f.includes('No Trash: 1 folder(s) will be deleted permanently and cannot be recovered'), 'confirm screen warns');
+  assert.ok(frame().includes('node_modules  deleted permanently'));
   assert.ok(frame().includes(path.join(root, 'alpha')));
   assert.ok(!frame().includes(path.join(root, 'bravo')));
 
@@ -28,6 +29,10 @@ test('select, confirm and clean through the TUI', async () => {
   await waitFor((f) => f.includes('Done.'), 'clean finished');
   assert.equal(existsSync(path.join(root, 'alpha/node_modules')), false);
   assert.equal(existsSync(path.join(root, 'bravo/node_modules')), true);
+  const log = readFileSync(process.env.PUTZTEUFEL_LOG!, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const entry = log.find((e) => e.label === path.join(root, 'alpha'));
+  assert.equal(entry.result, 'done');
+  assert.deepEqual(entry.paths, [{ path: path.join(root, 'alpha/node_modules'), how: 'delete' }]);
 
   await press('RETURN');
   await waitFor((f) => f.includes('1 found'), 'list after clean');

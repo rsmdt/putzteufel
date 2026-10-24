@@ -62,12 +62,15 @@ Items younger than the age threshold and projects edited within `recentDays` (de
 
 putzteufel deletes files. It is free software under the GNU General Public License v3.0 or later (see `LICENSE`), provided **without any warranty**: see sections 15 (Disclaimer of Warranty) and 16 (Limitation of Liability). You choose what is removed, and the review screen lists every folder and command before anything runs. Use Trash mode (`t`) when you are unsure, and keep backups of anything you cannot recreate.
 
+Every cleaned, failed or skipped item is appended to an operations log, `~/Library/Logs/putzteufel/operations.log` on macOS (`$XDG_STATE_HOME/putzteufel/operations.log` elsewhere; `PUTZTEUFEL_LOG` overrides the path), as one JSON object per line with the time, plugin, paths, how each path was removed (`delete` or `trash`), the commands that ran and the size.
+
 ## Safety rules
 
 - Symlinks are never followed or deleted through.
 - Inside a git repo, a folder without a leading dot (`build`, `dist`, `bin`, `vendor`, `Library`, …) is only offered if git ignores it, so a committed `build/` is never touched. `node_modules`, `__pycache__` and `__pypackages__` skip that check.
 - `~/Library`, `~/.Trash`, `/System`, `/Library`, `/Applications` are never walked by the project scan.
 - The home directory, its parents and top-level system folders are refused at delete time, whatever a config says.
+- In delete mode the review screen says how many folders will be deleted permanently and cannot be recovered; when the Trash is not available (no `trash` or `osascript` command) it says so instead. Folders tagged `data loss` go to the Trash even in delete mode, except things already in the Trash. Commands such as `docker volume prune` cannot use the Trash, and the review screen says that too.
 - A folder several plugins reach (say `~/.cache/uv`, found by uv and by the `~/.cache/*` catch-all) is listed under each of them, tagged `also: …`, and counted once: under the folder that contains it, or for the same folder under the specific plugin rather than the catch-all. When both are selected, only that one cleans it; the other is skipped. The file browser shows which other plugins touch each entry.
 
 ## Plugins

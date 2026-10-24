@@ -1,7 +1,42 @@
 import { rm } from 'node:fs/promises';
-import { exists, isUnsafeToDelete, tildify } from './paths.ts';
-import { describeCommand, execFileAsync, shell } from './shell.ts';
+import path from 'node:path';
+import { HOME, exists, isUnsafeToDelete, tildify } from './paths.ts';
+import { describeCommand, execFileAsync, resolveCommand, shell, which } from './shell.ts';
 import type { Target } from './types.ts';
+
+export type Disposal = 'delete' | 'trash';
+
+export interface CleanOptions {
+  useTrash: boolean;
+  trashAvailable: boolean;
+  minAge?: number;
+}
+
+export interface Disposed {
+  path: string;
+  how: Disposal;
+}
+
+export interface CleanOutcome {
+  errors: string[];
+  disposed: Disposed[];
+}
+
+const TRASH_DIR = path.join(HOME, '.Trash');
+
+export async function trashAvailable(): Promise<boolean> {
+  return (await which('trash')) || (await which('osascript'));
+}
+
+export function disposalFor(target: Target, p: string, options: CleanOptions): Disposal {
+  const insideTrash = p === TRASH_DIR || p.startsWith(TRASH_DIR + path.sep);
+  return options.trashAvailable && !insideTrash && (options.useTrash || target.impact === 'dataloss') ? 'trash' : 'delete';
+}
+
+async function moveToTrash(p: string): Promise<void> {
+  if (await which('trash')) await execFileAsync('trash', [p]);
+  else await execFileAsync('osascript', ['-e', `tell application "Finder" to delete POSIX file ${JSON.stringify(p)}`]);
+}
 
 async function removePath(p: string): Promise<void> {
   try {
@@ -12,28 +47,30 @@ async function removePath(p: string): Promise<void> {
   }
 }
 
-export async function cleanTarget(target: Target, useTrash: boolean): Promise<string[]> {
-  const errors: string[] = [];
+export async function cleanTarget(target: Target, options: CleanOptions): Promise<CleanOutcome> {
+  const outcome: CleanOutcome = { errors: [], disposed: [] };
   if (target.commands.length) {
     for (const command of target.commands) {
-      await shell(command.run, command.cwd).catch((e: Error & { stderr?: string }) => {
-        errors.push(`${describeCommand(command)}: ${(e.stderr || e.message).trim().slice(-400)}`);
+      await shell(resolveCommand(command.run, options.minAge), command.cwd).catch((e: Error & { stderr?: string }) => {
+        outcome.errors.push(`${describeCommand(command, options.minAge)}: ${(e.stderr || e.message).trim().slice(-400)}`);
       });
     }
-    return errors;
+    return outcome;
   }
   for (const p of target.paths) {
     if (!(await exists(p))) continue;
     if (isUnsafeToDelete(p)) {
-      errors.push(`refused to delete ${p}`);
+      outcome.errors.push(`refused to delete ${p}`);
       continue;
     }
+    const how = disposalFor(target, p, options);
     try {
-      if (useTrash) await execFileAsync('trash', [p]);
+      if (how === 'trash') await moveToTrash(p);
       else await removePath(p);
+      outcome.disposed.push({ path: p, how });
     } catch (e) {
-      errors.push(`${tildify(p)}: ${(e as Error).message}`);
+      outcome.errors.push(`${tildify(p)}: ${(e as Error).message}`);
     }
   }
-  return errors;
+  return outcome;
 }

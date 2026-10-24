@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { Operation } from '../../core/index.ts';
 import { type Decision, type RunPlan, type RunResult, type Step, planSteps, runClean } from '../../engine/run.ts';
 
 export interface Failure {
@@ -17,7 +18,7 @@ export interface CleanRun {
   reset: () => void;
 }
 
-export function useCleanRun(): CleanRun {
+export function useCleanRun(onOperation: (operation: Operation) => void): CleanRun {
   const [steps, setSteps] = useState<Step[]>([]);
   const [finishedOrder, setFinishedOrder] = useState<string[]>([]);
   const [failure, setFailure] = useState<Failure | undefined>();
@@ -36,6 +37,7 @@ export function useCleanRun(): CleanRun {
         if (step.state === 'done' || step.state === 'failed' || step.state === 'skipped') setFinishedOrder((order) => [...order.filter((id) => id !== step.id), step.id]);
         if (step.kind === 'item' && step.state === 'done') setFreed((n) => n + (step.bytes ?? 0));
       },
+      onOperation,
       onFailure: (step, error) =>
         new Promise<Decision>((resolve) => {
           resolver.current = resolve;

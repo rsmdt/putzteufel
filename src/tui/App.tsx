@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Hooks, type Plugin, type ScanContext, type Target, describeCommand, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
+import { type Hooks, type Operation, type Plugin, type ScanContext, type Target, describeCommand, logOperation, trashAvailable, dirEntries, entrySizes, human, isYounger, listing, preselect, tildify } from '../core/index.ts';
 import { overlapIndex, uniqueSize } from '../engine/overlap.ts';
 import { missingTools } from '../engine/run.ts';
 import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
@@ -47,17 +47,18 @@ export interface AppProps {
   theme?: string;
   firstRun?: boolean;
   onSaveState?: (patch: { welcomed?: boolean; theme?: string }) => void;
+  onOperation?: (operation: Operation) => void;
   onExit: () => void;
 }
 
-export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onExit }: AppProps) {
+export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onOperation = logOperation, onExit }: AppProps) {
   const { width, height } = useTerminalDimensions();
   const [messages, setMessages] = useState<Message[]>(configErrors.map((e) => message(e, 'error')));
   const say = (text: string, level: Level = 'info') => setMessages((all) => [...all.slice(-199), message(text, level)]);
   const minAgeRef = useRef(ctx.olderThan);
   const [minAge, setMinAge] = useState(ctx.olderThan);
   const scan = useScan(plugins, ctx, minAgeRef, (text) => say(text, 'warn'));
-  const run = useCleanRun();
+  const run = useCleanRun(onOperation);
 
   const [cursor, setCursor] = useState(0);
   const cursorRef = useRef(0);
@@ -67,6 +68,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
   const [useTrash, setUseTrash] = useState(false);
+  const [canTrash, setCanTrash] = useState(false);
   const [browse, setBrowse] = useState<Browse | null>(null);
   const [overlay, setOverlay] = useState<Overlay | null>(firstRun ? 'welcome' : null);
   const [focus, setFocus] = useState<Focus>('list');
@@ -140,6 +142,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     if (index >= 0) moveTo(index);
     setPendingKey(null);
   }, [rows, pendingKey]);
+
+  useEffect(() => {
+    trashAvailable().then(setCanTrash);
+  }, []);
 
   useEffect(() => setPreviewOffset(0), [current?.key, browse ? currentEntry(browse)?.path : undefined]);
 
@@ -254,7 +260,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const runCleanup = () => {
     const targetsToClean = [...selected];
     openDialog('progress');
-    run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), uninstallAfter, hooks, useTrash }, (result) => {
+    run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), uninstallAfter, hooks, useTrash, trashAvailable: canTrash, minAge: minAgeRef.current }, (result) => {
       result.cleaned.forEach((id) => cleanedRef.current.add(id));
       const failed = result.steps.filter((s) => s.state === 'failed').length;
       say(`Cleaned ${result.cleaned.size} of ${targetsToClean.length} item(s), freed about ${human(result.freed)}${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}.`, failed || result.aborted ? 'warn' : 'info');
@@ -356,6 +362,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         openDialog('theme');
         return true;
       case 'trash':
+        if (!canTrash) {
+          say('The Trash is not available here (no trash or osascript command); folders are deleted permanently.', 'warn');
+          return true;
+        }
         setUseTrash((v) => !v);
         say(useTrash ? 'Delete mode: items are removed permanently.' : 'Trash mode: deleted folders go to the Trash. Tool commands still run as usual.');
         return true;
@@ -589,7 +599,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
       ? { message: `No item matches “${filter}”.`, hint: { keys: 'esc', label: 'clear the filter' } }
       : { message: 'Nothing to clean here.', detail: [`Scanned ${ctx.roots.map(tildify).join(', ') || 'no folders'} and the known cache locations.`], hint: { keys: 'r', label: 'rescan' } };
 
-  const reviewText = overlay === 'review' ? reviewLines(selected, useTrash, install, uninstallAfter, hooks, theme) : [];
+  const reviewText = overlay === 'review' ? reviewLines(selected, { useTrash, trashAvailable: canTrash, install, uninstallAfter, hooks, minAge }, theme) : [];
   const help = overlay === 'help' ? helpLines(helpQuery, legendLines(ctx.recentDays, theme), theme) : [];
 
   return (

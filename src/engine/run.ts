@@ -1,4 +1,4 @@
-import { type Command, type Hooks, type Target, type Tool, cleanTarget, forgetWhich, shell, tildify, which } from '../core/index.ts';
+import { type Command, type Disposed, type Hooks, type Operation, type Target, type Tool, cleanTarget, describeCommand, forgetWhich, shell, tildify, which } from '../core/index.ts';
 import { coveredIn } from './overlap.ts';
 
 export const INSTALL_TIMEOUT = 30 * 60_000;
@@ -9,6 +9,8 @@ export interface RunPlan {
   uninstallAfter: boolean;
   hooks: Hooks;
   useTrash: boolean;
+  trashAvailable: boolean;
+  minAge?: number;
 }
 
 export type StepKind = 'hook' | 'install' | 'item' | 'uninstall';
@@ -28,6 +30,7 @@ export type Decision = 'retry' | 'skip' | 'skipAll' | 'abort';
 export interface RunEvents {
   onStep?: (step: Step) => void;
   onFailure?: (step: Step, error: string) => Promise<Decision>;
+  onOperation?: (operation: Operation) => void;
 }
 
 export interface RunResult {
@@ -51,10 +54,14 @@ export function actionFor(t: Target, install: Set<string>): Action {
   return { kind: 'delete', missing: t.tool && !t.tool.installed && t.tool.clean.length ? t.tool.bin : undefined };
 }
 
-export function summarize(action: Action, t: Target, useTrash: boolean): string {
-  if (action.kind === 'commands') return `Ran ${action.commands.map((c) => c.run).join(' && ')}`;
-  const count = t.paths.length;
-  return `${useTrash ? 'Moved' : 'Deleted'} ${count} ${count === 1 ? 'folder' : 'folders'}${useTrash ? ' to the Trash' : ''}`;
+const folders = (n: number) => `${n} ${n === 1 ? 'folder' : 'folders'}`;
+
+export function summarize(action: Action, disposed: Disposed[], minAge = 0): string {
+  if (action.kind === 'commands') return `Ran ${action.commands.map((c) => describeCommand(c, minAge)).join(' && ')}`;
+  const trashed = disposed.filter((d) => d.how === 'trash').length;
+  const deleted = disposed.length - trashed;
+  const parts = [...(deleted ? [`Deleted ${folders(deleted)}`] : []), ...(trashed ? [`Moved ${folders(trashed)} to the Trash`] : [])];
+  return parts.join(', ') || 'Nothing left to remove';
 }
 
 function errorText(e: Error & { stderr?: string }): string {
@@ -131,27 +138,35 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     for (const t of targets) {
       if (result.aborted) break;
       const id = `item:${t.id}`;
+      const record = (state: Operation['result'], detail?: string, extra: Partial<Operation> = {}) =>
+        events.onOperation?.({ at: new Date().toISOString(), plugin: t.plugin, item: t.item, label: t.label, result: state, detail, ...extra });
       const cover = covered.get(t.id);
       if (cover) {
         update(id, 'skipped', `inside ${cover.plugin} ${tildify(cover.label)}, cleaned there`);
+        record('skipped', `inside ${cover.plugin} ${cover.label}`);
         continue;
       }
       if (t.tool && plan.install.some((x) => x.bin === t.tool!.bin) && !installed.has(t.tool.bin)) {
         update(id, 'skipped', `${t.tool.bin} could not be installed`);
+        record('skipped', `${t.tool.bin} could not be installed`);
         continue;
       }
       const action = actionFor(t, installed);
+      const commands = action.kind === 'commands' ? action.commands : [];
       for (;;) {
         update(id, 'running');
-        const failures = await cleanTarget({ ...t, commands: action.kind === 'commands' ? action.commands : [] }, plan.useTrash);
-        if (!failures.length) {
+        const outcome = await cleanTarget({ ...t, commands }, { useTrash: plan.useTrash, trashAvailable: plan.trashAvailable, minAge: plan.minAge });
+        const detail = { commands: commands.map((c) => describeCommand(c, plan.minAge)), paths: outcome.disposed, bytes: t.size };
+        if (!outcome.errors.length) {
           result.freed += t.size ?? 0;
           result.cleaned.add(t.id);
-          update(id, 'done', summarize(action, t, plan.useTrash));
+          update(id, 'done', summarize(action, outcome.disposed, plan.minAge));
+          record('done', undefined, detail);
           break;
         }
-        const error = failures.join('; ');
+        const error = outcome.errors.join('; ');
         update(id, 'failed', error);
+        record('failed', error, detail);
         const decision: Decision = skipAll || !events.onFailure ? 'skip' : await events.onFailure({ ...byId.get(id)! }, error);
         if (decision === 'retry') continue;
         if (decision === 'skipAll') skipAll = true;
