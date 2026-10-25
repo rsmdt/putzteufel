@@ -158,32 +158,6 @@ These are cleaned with the tool's own command. When the tool is missing, putzteu
 | `brew` | macOS | old versions and downloads |
 | `mise` | macOS | tool cache |
 
----|---|---|
-| **JavaScript** | npm, pnpm¹, yarn¹, deno¹, Playwright, Cypress | `node_modules` and build output, React Native, bun, corepack, Electron, node-gyp, Puppeteer, TypeScript |
-| **Python** | uv¹, pip, poetry¹, conda, pre-commit¹, Hugging Face¹ | caches, virtual environments and build output, Pixi, PyTorch |
-| **Rust** | Cargo `target`, Cargo registry¹ | xwin cache |
-| **Go** | build and module cache¹ | |
-| **Java** | | Maven, Gradle, SBT |
-| **.NET** | NuGet packages | `bin` and `obj` |
-| **Ruby** | old RubyGems versions | Bundler `vendor/bundle` |
-| **PHP** | Composer cache¹ | Composer `vendor` |
-| **Haskell, Elixir, Dart, Zig, C/C++** | | Stack, Cabal, Elixir, Flutter, Zig, CMake |
-| **Apple** | CocoaPods cache¹, unavailable simulators | DerivedData, Previews, Archives, device support, simulator caches, Swift, Carthage, `Pods` |
-| **Containers** | Docker, Podman | |
-| **macOS** | Homebrew, mise¹ | `~/.cache`, `~/Library/Caches`, `~/Library/Logs`, installers in Downloads, Trash |
-| **Terraform** | | `.terraform` |
-| **Editors** | | VS Code, Cursor, Windsurf, VSCodium, JetBrains |
-| **Game engines** | | Unity, Unreal, Godot |
-
----|---|
-| **JavaScript** | Node, React Native, npm, pnpm, yarn, bun, deno, corepack, node-gyp, Electron, TypeScript, Playwright, Puppeteer, Cypress |
-| **Python** | Python, uv, pip, poetry, conda, Pixi, pre-commit, Hugging Face, PyTorch |
-| **Other languages** | Cargo, Go, Maven, Gradle, SBT, .NET, Bundler, RubyGems, Composer, Stack, Cabal, Elixir, Flutter, Zig, CMake |
-| **Apple** | Xcode, Swift, CocoaPods, Carthage |
-| **Containers** | Docker, Podman |
-| **macOS** | Homebrew, mise, Terraform, `~/.cache`, `~/Library/Caches`, `~/Library/Logs`, installers in Downloads, Trash |
-| **Apps** | VS Code, Cursor, Windsurf, VSCodium, JetBrains, Unity, Unreal, Godot |
-
 ---
 
 ## ⌨️ Command Line
