@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
-import { main } from '../src/interfaces/cli/main.ts';
+import { fileURLToPath } from 'node:url';
+import { register } from 'tsx/esm/api';
 
-const code = await main();
-await new Promise<void>((resolve) => process.stdout.write('', () => resolve()));
-process.exit(code);
+register({ tsconfig: fileURLToPath(new URL('../tsconfig.json', import.meta.url)) });
+await import('../src/interfaces/cli/run.ts');

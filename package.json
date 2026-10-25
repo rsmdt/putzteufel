@@ -17,8 +17,8 @@
     "node": ">=26.4.0"
   },
   "scripts": {
-    "start": "node --import tsx bin/putzteufel.ts",
-    "build": "esbuild bin/putzteufel.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/putzteufel.js",
+    "start": "node bin/putzteufel.ts",
+    "build": "esbuild src/interfaces/cli/run.ts --banner:js='#!/usr/bin/env -S node --disable-warning=ExperimentalWarning' --bundle --platform=node --format=esm --packages=external --outfile=dist/putzteufel.js",
     "prepublishOnly": "npm run build",
     "test": "node --import tsx --test --test-timeout=30000 'tests/**/*.test.ts' 'tests/**/*.test.tsx'",
     "typecheck": "tsc --noEmit"
