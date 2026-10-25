@@ -13,13 +13,17 @@
     "url": "https://github.com/rsmdt/putzteufel/issues"
   },
   "keywords": [
+    "cleaner",
     "cleanup",
+    "clean",
+    "disk-cleaner",
+    "system-cleaner",
     "disk-space",
-    "cache",
-    "node_modules",
-    "docker",
-    "tui",
-    "cli"
+    "free-up-space",
+    "macos",
+    "linux",
+    "cli",
+    "tui"
   ],
   "type": "module",
   "bin": {
