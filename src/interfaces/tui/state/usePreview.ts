@@ -8,6 +8,7 @@ import type { Target } from '../../../domain/types.ts';
 import { listing } from '../../../infrastructure/measure.ts';
 import { type Browse, currentEntry } from '../model/browse.ts';
 import { type Line, impactLines, toolLines } from '../model/explain.ts';
+import { infoLines } from '../model/log.ts';
 import { type Row, ownerLabel, stats } from '../model/rows.ts';
 import type { Theme } from '../theme.ts';
 
@@ -19,8 +20,7 @@ interface PreviewInputs {
   minAge: number;
   theme: Theme;
   overlap: OverlapIndex;
-  log: string[];
-  busy: boolean;
+  log: Line[];
   version: number;
 }
 
@@ -58,31 +58,39 @@ function browseLines(browse: Browse, inputs: PreviewInputs): Line[] {
   return [`${tildify(entry.path)}  ·  ${human(entry.size)}  ·  ${entry.isDir ? 'folder, enter opens it' : 'file'}`, ...impact, 'space selects or deselects the whole item; it is removed as one unit'];
 }
 
-function withLog(lines: Line[], inputs: PreviewInputs): Line[] {
-  if (!inputs.log.length) return lines;
-  if (!lines.length) return [];
-  const [head, ...rest] = lines;
-  const title: Line = { text: inputs.busy ? 'Scan log (still running):' : 'Scan log:', fg: inputs.busy ? inputs.theme.accent : inputs.theme.muted, bold: true };
-  const log = [title, ...inputs.log.map((text): Line => ({ text, fg: inputs.theme.muted }))];
-  return inputs.busy ? [head, ...log, '', ...rest] : [head, ...rest, '', ...log];
+interface Explained {
+  info: Line[];
+  files: Line[];
 }
 
-export function usePreview(inputs: PreviewInputs): Line[] {
-  const [lines, setLines] = useState<Line[]>([]);
+interface Preview {
+  lines: Line[];
+  logEnd: number;
+}
+
+function compose({ info, files }: Explained, inputs: PreviewInputs): Preview {
+  if (!info.length) return { lines: [], logEnd: 0 };
+  const gap = (lines: Line[]): Line[] => (lines.length ? ['', ...lines] : []);
+  const head = [...infoLines(info, inputs.theme), ...gap(inputs.log)];
+  return { lines: [...head, ...gap(files)], logEnd: head.length };
+}
+
+export function usePreview(inputs: PreviewInputs): Preview {
+  const [explained, setExplained] = useState<Explained>({ info: [], files: [] });
   const { row, browse } = inputs;
   useEffect(() => {
-    if (browse || !row) return setLines([]);
-    if (row.kind !== 'target') return setLines(groupLines(row, inputs));
+    if (browse || !row) return setExplained({ info: [], files: [] });
+    if (row.kind !== 'target') return setExplained({ info: groupLines(row, inputs), files: [] });
     let cancelled = false;
-    const explained = targetLines(row.target, inputs);
-    setLines(explained);
-    const slow = setTimeout(() => !cancelled && setLines([...explained, 'listing files…']), 500);
+    const info = targetLines(row.target, inputs);
+    setExplained({ info, files: [] });
+    const slow = setTimeout(() => !cancelled && setExplained({ info, files: ['listing files…'] }), 500);
     const timer = setTimeout(() => {
       listing(row.target, 400).then(({ lines: files, truncated }) => {
         clearTimeout(slow);
         const prefix = tildify(row.target.label) + path.sep;
         const shown = files.map((l) => (l.startsWith(prefix) ? `  ${l.slice(prefix.length)}` : l));
-        if (!cancelled) setLines([...explained, ...shown, ...(truncated ? ['… more files, press f to browse'] : [])]);
+        if (!cancelled) setExplained({ info, files: [...shown, ...(truncated ? ['… more files, press f to browse'] : [])] });
       });
     }, 80);
     return () => {
@@ -91,5 +99,7 @@ export function usePreview(inputs: PreviewInputs): Line[] {
       clearTimeout(slow);
     };
   }, [row?.key, inputs.version, browse === null, inputs.theme, inputs.overlap]);
-  return browse ? browseLines(browse, inputs) : withLog(lines, inputs);
+  if (!browse) return compose(explained, inputs);
+  const lines = browseLines(browse, inputs);
+  return { lines, logEnd: lines.length };
 }

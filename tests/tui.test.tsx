@@ -26,7 +26,7 @@ test('select, confirm and clean through the TUI', async () => {
   assert.ok(!frame().includes(path.join(root, 'bravo')));
 
   await press('y');
-  await waitFor((f) => f.includes('Done.'), 'clean finished');
+  await waitFor((f) => /Cleaned 1 of 1 item\(s\)/.test(f), 'clean finished');
   assert.equal(existsSync(path.join(root, 'alpha/node_modules')), false);
   assert.equal(existsSync(path.join(root, 'bravo/node_modules')), true);
   const log = readFileSync(process.env.PUTZTEUFEL_LOG!, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -34,8 +34,8 @@ test('select, confirm and clean through the TUI', async () => {
   assert.equal(entry.result, 'done');
   assert.deepEqual(entry.paths, [{ path: path.join(root, 'alpha/node_modules'), how: 'delete' }]);
 
-  await press('RETURN');
-  await waitFor((f) => f.includes('1 found'), 'list after clean');
+  await press('ESCAPE');
+  await waitFor((f) => f.includes('2 found') && /\[ \].*alpha.*█{10} ✓ /.test(f), 'the cleaned row stays until the next rescan');
 });
 
 test('the file browser lists what an item contains before anything is removed', async () => {
@@ -80,7 +80,7 @@ test('the map shows a sunburst, toggles to a treemap, and clicks move the cursor
   await waitFor((f) => f.includes(path.join(root, 'alpha')), 'expanded');
   const mapLeft = 140 - Math.floor(140 * 0.42);
   await act(async () => setup.mockMouse.click(mapLeft + 3, 5));
-  await waitFor((f) => f.includes('node_modules/big.bin'), 'clicked item in preview');
+  await waitFor((f) => f.includes('Items 4/5') && f.includes('[INFO] If removed (rebuild)'), 'clicked item at the cursor and in the preview');
   await press('m');
   await waitFor((f) => !f.includes('treemap'), 'map hidden');
   await press('q');
@@ -138,6 +138,6 @@ test('missing native tools are offered for install, with uninstall afterwards', 
   await press('n', 'd', 'RETURN');
   await waitFor((f) => f.includes('install:      $ fakebrew install fakecache') && f.includes('then remove:  $ fakebrew uninstall fakecache') && f.includes('$ fakecache clean   (after install)'), 'review shows the install plan');
   await press('y');
-  await waitFor((f) => f.includes('Done.'), 'clean finished');
+  await waitFor((f) => /Cleaned 1 of 1 item\(s\)/.test(f), 'clean finished');
   assert.deepEqual(readFileSync(journal, 'utf8').trim().split('\n'), ['brew install fakecache', 'fakecache clean', 'brew uninstall fakecache']);
 });

@@ -58,13 +58,14 @@ test('one key registry drives dispatch, the footer and the help screen', () => {
   assert.equal(resolve('list', keyToken({ name: 'j', sequence: 'j', shift: false, ctrl: false, meta: false })), 'down');
   assert.equal(resolve('map', 'right'), 'next');
   assert.equal(resolve('list', 'right'), 'expand');
-  assert.equal(resolve('failure', 'S'), 'skipAll');
+  assert.equal(resolve('review', 'y'), 'confirm');
+  assert.equal(resolve('list', 'w'), undefined);
   assert.equal(resolve('welcome', 'x'), 'dismiss');
   assert.equal(keyToken({ name: 'tab', sequence: '\t', shift: true, ctrl: false, meta: false }), 'shift+tab');
   assert.ok(footerHints('list').some((h) => h.key === 'enter/f' && h.label === 'files'));
   assert.ok(!footerHints('list').some((h) => h.label === 'move up'));
   const sections = helpSections();
-  assert.ok(sections.some((s) => s.title === 'When an item fails' && s.rows.some((r) => r.label === 'retry')));
+  assert.ok(sections.some((s) => s.title === 'Views' && s.rows.some((r) => r.label === 'clear the filter, or stop a running cleanup')));
   for (const context of new Set(BINDINGS.flatMap((b) => b.contexts))) {
     const seen = new Map<string, string>();
     for (const b of BINDINGS.filter((x) => x.contexts.includes(context))) {

@@ -1,5 +1,4 @@
 import { SORT_KEYS, type Sort } from '../../../domain/sort.ts';
-import type { Decision } from '../../../domain/run-plan.ts';
 import type { Target, Tool } from '../../../domain/types.ts';
 import type { Action, Context } from '../keys.ts';
 import { type MapNode, ancestry } from '../map/layout.ts';
@@ -8,7 +7,7 @@ import type { Browser } from '../state/useBrowse.ts';
 import { THEMES } from '../theme.ts';
 import type { MapMode } from '../views/MapPane.tsx';
 
-export type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'suggest' | 'review' | 'progress';
+export type Overlay = 'welcome' | 'help' | 'sort' | 'theme' | 'tools' | 'suggest' | 'review';
 export type Focus = 'list' | 'preview' | 'map';
 type Set<T> = (value: T | ((previous: T) => T)) => void;
 
@@ -52,8 +51,6 @@ interface Controls {
   toggleTrash: () => void;
   startClean: () => void;
   runCleanup: () => void;
-  finishClean: () => void;
-  decide: (decision: Decision) => void;
   rescan: () => void;
   openHelp: () => void;
   setHelpSearching: (on: boolean) => void;
@@ -143,7 +140,6 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       c.setMapMode((m) => (m === 'sunburst' ? 'treemap' : m === 'treemap' ? 'off' : 'sunburst'));
       if (c.mapMode === 'treemap' && c.focus === 'map') c.setFocus('list');
     }
-    if (action === 'messages') c.openDialog('messages');
     if (action === 'theme') {
       c.setThemeBefore(c.themeName);
       c.openDialog('theme');
@@ -244,11 +240,6 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       if (action === 'confirm') c.runCleanup();
       if (action === 'cancel') c.closeDialog();
     },
-    progress: () => undefined,
-    failure: (action) => {
-      if (action === 'retry' || action === 'skip' || action === 'skipAll' || action === 'abort') c.decide(action);
-    },
-    done: () => c.finishClean(),
     help: (action) => {
       if (scrollDialog(action)) return;
       if (action === 'search') c.setHelpSearching(true);
@@ -257,9 +248,6 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
     helpSearch: (action) => {
       if (action === 'cancel') c.setHelpQuery('');
       c.setHelpSearching(false);
-    },
-    messages: (action) => {
-      if (!scrollDialog(action) && action === 'cancel') c.closeDialog();
     },
     sort: (action) => {
       if (action === 'down') c.setSortCursor((i) => Math.min(SORT_KEYS.length - 1, i + 1));

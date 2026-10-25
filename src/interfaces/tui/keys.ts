@@ -10,12 +10,8 @@ export type Context =
   | 'tools'
   | 'suggest'
   | 'review'
-  | 'progress'
-  | 'failure'
-  | 'done'
   | 'help'
   | 'helpSearch'
-  | 'messages'
   | 'sort'
   | 'theme'
   | 'welcome';
@@ -48,17 +44,12 @@ export type Action =
   | 'trash'
   | 'clean'
   | 'rescan'
-  | 'messages'
   | 'theme'
   | 'help'
   | 'quit'
   | 'confirm'
   | 'cancel'
   | 'search'
-  | 'retry'
-  | 'skip'
-  | 'skipAll'
-  | 'abort'
   | 'dismiss'
   | 'install';
 
@@ -74,7 +65,7 @@ interface Binding {
 }
 
 const MAIN: Context[] = ['list', 'files', 'map', 'preview'];
-const SCROLL: Context[] = ['preview', 'review', 'help', 'messages'];
+const SCROLL: Context[] = ['preview', 'review', 'help'];
 
 export const BINDINGS: Binding[] = [
   { action: 'down', keys: ['down', 'j'], label: 'move', section: 'Move', contexts: ['list', 'files', 'tools', 'suggest', 'sort', 'theme'], display: '↑↓' },
@@ -83,12 +74,12 @@ export const BINDINGS: Binding[] = [
   { action: 'up', keys: ['up', 'k'], label: 'scroll up', section: 'Move', contexts: SCROLL, footer: false },
   { action: 'pageDown', keys: ['pagedown'], label: 'page down', section: 'Move', contexts: ['list', 'files', ...SCROLL], footer: false },
   { action: 'pageUp', keys: ['pageup'], label: 'page up', section: 'Move', contexts: ['list', 'files', ...SCROLL], footer: false },
-  { action: 'top', keys: ['home', 'g'], label: 'first row', section: 'Move', contexts: ['list', 'files', 'help', 'messages', 'review'], footer: false },
-  { action: 'bottom', keys: ['end', 'G'], label: 'last row', section: 'Move', contexts: ['list', 'files', 'help', 'messages', 'review'], footer: false },
+  { action: 'top', keys: ['home', 'g'], label: 'first row', section: 'Move', contexts: ['list', 'files', 'help', 'review'], footer: false },
+  { action: 'bottom', keys: ['end', 'G'], label: 'last row', section: 'Move', contexts: ['list', 'files', 'help', 'review'], footer: false },
   { action: 'expand', keys: ['right', 'l'], label: 'expand', section: 'Move', contexts: ['list'], display: '→/←', priority: 'optional' },
   { action: 'collapse', keys: ['left', 'h'], label: 'collapse', section: 'Move', contexts: ['list'], footer: false },
   { action: 'open', keys: ['return', 'f'], label: 'files', section: 'Files', contexts: ['list'], display: 'enter/f' },
-  { action: 'cancel', keys: ['escape'], label: 'clear the filter', section: 'Views', contexts: ['list', 'map', 'preview'], footer: false },
+  { action: 'cancel', keys: ['escape'], label: 'clear the filter, or stop a running cleanup', section: 'Views', contexts: ['list', 'map', 'preview'], footer: false },
   { action: 'open', keys: ['return', 'right', 'l'], label: 'open', section: 'Files', contexts: ['files'], display: 'enter' },
   { action: 'parent', keys: ['left', 'backspace', 'h'], label: 'up', section: 'Files', contexts: ['files'], display: '←' },
   { action: 'back', keys: ['escape', 'f'], label: 'back', section: 'Files', contexts: ['files'], display: 'esc/f', priority: 'essential' },
@@ -107,7 +98,6 @@ export const BINDINGS: Binding[] = [
   { action: 'sort', keys: ['o'], label: 'sort', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'reverse', keys: ['R'], label: 'reverse sort', section: 'Views', contexts: [...MAIN, 'sort'], footer: false },
   { action: 'map', keys: ['m'], label: 'map', section: 'Views', contexts: MAIN, priority: 'optional' },
-  { action: 'messages', keys: ['w'], label: 'messages', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'theme', keys: ['T'], label: 'theme', section: 'Views', contexts: MAIN, priority: 'optional', footer: false },
   { action: 'install', keys: ['i'], label: 'tools', section: 'Clean', contexts: MAIN, priority: 'optional' },
   { action: 'confirm', keys: ['return'], label: 'install now', section: 'Native tools', contexts: ['suggest'], display: 'enter', priority: 'essential' },
@@ -123,16 +113,10 @@ export const BINDINGS: Binding[] = [
   { action: 'cancel', keys: ['escape', 'n'], label: 'cancel', section: 'Native tools', contexts: ['tools'], display: 'esc', priority: 'essential' },
   { action: 'confirm', keys: ['y'], label: 'clean now', section: 'Review', contexts: ['review'], priority: 'essential' },
   { action: 'cancel', keys: ['n', 'escape'], label: 'cancel', section: 'Review', contexts: ['review'], display: 'n/esc', priority: 'essential' },
-  { action: 'retry', keys: ['r'], label: 'retry', section: 'When an item fails', contexts: ['failure'], priority: 'essential' },
-  { action: 'skip', keys: ['s'], label: 'skip', section: 'When an item fails', contexts: ['failure'], priority: 'essential' },
-  { action: 'skipAll', keys: ['S'], label: 'skip all failures', section: 'When an item fails', contexts: ['failure'], priority: 'essential' },
-  { action: 'abort', keys: ['a'], label: 'abort', section: 'When an item fails', contexts: ['failure'], priority: 'essential' },
-  { action: 'back', keys: ['return', 'escape', 'q'], label: 'back to list', section: 'Review', contexts: ['done'], display: 'enter', priority: 'essential' },
   { action: 'search', keys: ['/'], label: 'search', section: 'Help', contexts: ['help'], priority: 'essential' },
   { action: 'cancel', keys: ['escape', '?', 'q'], label: 'close', section: 'Help', contexts: ['help'], display: 'esc', priority: 'essential' },
   { action: 'cancel', keys: ['escape'], label: 'stop searching', section: 'Help', contexts: ['helpSearch'], display: 'esc', priority: 'essential' },
   { action: 'confirm', keys: ['return'], label: 'keep results', section: 'Help', contexts: ['helpSearch'], display: 'enter' },
-  { action: 'cancel', keys: ['escape', 'w', 'q'], label: 'close', section: 'Messages', contexts: ['messages'], display: 'esc', priority: 'essential' },
   { action: 'confirm', keys: ['return'], label: 'apply', section: 'Sort', contexts: ['sort'], display: 'enter', priority: 'essential' },
   { action: 'cancel', keys: ['escape', 'o'], label: 'close', section: 'Sort', contexts: ['sort'], display: 'esc', priority: 'essential' },
   { action: 'confirm', keys: ['return'], label: 'keep theme', section: 'Theme', contexts: ['theme'], display: 'enter', priority: 'essential' },

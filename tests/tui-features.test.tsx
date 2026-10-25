@@ -21,16 +21,14 @@ test('O1 footer hints shorten by priority at 80 columns and keep the essential o
   assert.ok(!footer.includes('rescan'));
 });
 
-test('O3 warnings go to the message bar and w opens the message log', async () => {
+test('O3 warnings go to the message bar, and there is no separate message log', async () => {
   const root = twoProjects();
   const broken = singleItem({ name: 'Broken lister', group: 'Test', list: 'echo boom >&2; exit 3' });
   const { frame, press, waitFor } = await start(root, 160, 30, [projectsScanner(builtinPlugins), broken]);
   await waitFor((f) => ready(f) && f.includes('Broken lister: Command failed'), 'warning in the message bar');
+  assert.ok(!frame().includes('w shows all'));
   await press('w');
-  await waitFor((f) => f.includes('Messages (1)') && f.includes('warn') && f.includes('boom'), 'message log');
-  await press('ESCAPE');
-  await waitFor((f) => !f.includes('Messages (1)'), 'log closed');
-  assert.ok(frame().includes('LIST'));
+  await waitFor((f) => lines(f)[0].includes('LIST') && !f.includes('Messages ('), 'w opens nothing');
 });
 
 test('O4 tab moves focus to the preview and the map, and arrows walk the map', async () => {
@@ -46,9 +44,9 @@ test('O4 tab moves focus to the preview and the map, and arrows walk the map', a
   await press('ARROW_DOWN');
   await waitFor((f) => f.includes('Node: 2/2'), 'into the Node plugin');
   await press('ARROW_DOWN');
-  await waitFor((f) => f.includes(`${path.join(root, 'alpha')}  ·`), 'into the largest item');
+  await waitFor((f) => f.includes(`[INFO] ${path.join(root, 'alph')}`), 'into the largest item');
   await press('ARROW_RIGHT');
-  await waitFor((f) => f.includes(`${path.join(root, 'bravo')}  ·`), 'next slice');
+  await waitFor((f) => f.includes(`[INFO] ${path.join(root, 'brav')}`), 'next slice');
   await press('ARROW_UP');
   await waitFor((f) => f.includes('Node: 2/2'), 'back out');
 });
@@ -68,7 +66,7 @@ test('O5 O12 O13 the mode pill, fuzzy filter and a designed empty state', async 
   await waitFor((f) => ready(f) && !f.includes('No item matches'), 'filter cleared');
 });
 
-test('O6 O7 the progress panel shows each step and a failed item asks to retry, skip or abort', async () => {
+test('O6 O7 a cleanup runs in the main screen: rows show their progress and the preview logs each step', async () => {
   const root = tempDir();
   write(root, { 'good/a': 'x', 'bad/b': 'y' });
   const good = singleItem({ name: 'Good', group: 'Test', paths: [path.join(root, 'good')], clean: `rm -rf "${path.join(root, 'good')}"` });
@@ -78,14 +76,35 @@ test('O6 O7 the progress panel shows each step and a failed item asks to retry, 
   await press('d');
   await waitFor((f) => f.includes('(y) Clean now'), 'review buttons');
   await press('y');
-  await waitFor((f) => lines(f)[0].includes('FAILED') && f.includes('(r) Retry') && f.includes('(S) Skip all') && f.includes('nope'), 'failure prompt');
-  await press('r');
-  await waitFor((f) => f.includes('(r) Retry'), 'asked again after retry');
-  await press('s');
-  await waitFor((f) => f.includes('Cleanup finished') && f.includes('2/2 items') && f.includes('Done.'), 'progress summary');
-  assert.ok(frame().includes('Ran rm -rf'));
-  await press('RETURN');
+  const row = (f: string, name: string) => f.split('\n').find((l) => l.includes(`${name}  via`)) ?? '';
+  await waitFor((f) => !f.includes('(y) Clean now') && /\[ \].*█{10} ✓ /.test(row(f, 'Good')) && /\[x\].*✗ failed/.test(row(f, 'Bad')), 'rows end with their state; the failed one stays selected');
   await waitFor((f) => f.includes('Cleaned 1 of 2 item(s)') && f.includes('1 step(s) failed'), 'result in the message bar');
+  assert.ok(lines(frame())[0].includes('LIST'));
+  await press('g', 'j', 'j', 'j');
+  await waitFor((f) => /✗ Could not clean .*nope · \d+\.\ds/.test(f), 'failed step and its error in the preview');
+  await press('d');
+  await waitFor((f) => f.includes('(y) Clean now') && f.includes('1 item'), 'd again reviews only the failed item');
+});
+
+test('esc stops a running cleanup; the run is locked until then', async () => {
+  const root = tempDir();
+  write(root, { 'slow/a': 'x' });
+  const slow = singleItem({ name: 'Slow', group: 'Test', paths: [path.join(root, 'slow')], clean: 'sleep 30' });
+  const { frame, press, waitFor } = await start(root, 160, 32, [slow]);
+  await waitFor((f) => f.includes('1 found') && !f.includes('scanning'), 'scan');
+  await press('d');
+  await waitFor((f) => f.includes('(y) Clean now'), 'review buttons');
+  await press('y');
+  await waitFor((f) => lines(f)[0].includes('CLEANING') && /[█░]{10} running/.test(f) && f.includes('esc stops') && /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Cleaning Slow · \d+\.\ds/.test(f) && f.includes('sleep 30'), 'row bar, header mode, footer hint and running step in the preview');
+  await press(' ');
+  await waitFor((f) => f.includes('A cleanup is running'), 'selection is locked');
+  await press('q');
+  await waitFor((f) => f.includes('press esc to stop it first'), 'quit is locked too');
+  const startedAt = Date.now();
+  await press('ESCAPE');
+  await waitFor((f) => f.includes('Cleaned 0 of 1 item(s)') && f.includes('aborted') && lines(f)[0].includes('LIST'), 'stopped');
+  assert.ok(Date.now() - startedAt < 5000);
+  assert.match(frame(), /✗ failed/);
 });
 
 test('O8 going up in the file browser lands on the folder you came from', async () => {
@@ -208,7 +227,7 @@ test('a folder two plugins claim is listed under both, counted once and cleaned 
   await press('d');
   await waitFor((f) => f.includes('lie inside another selected item'), 'review mentions it');
   await press('y');
-  await waitFor((f) => f.includes('Done.'), 'cleaned');
-  assert.ok(frame().includes('cleaned there'));
+  await waitFor((f) => /Cleaned \d of 3 item\(s\)/.test(f), 'cleaned');
+  assert.match(frame(), /↷ skipped/);
   assert.equal((await Bun.file(journal).text()).trim(), 'tool');
 });

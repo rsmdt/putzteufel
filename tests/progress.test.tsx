@@ -3,7 +3,8 @@ import path from 'node:path';
 import { test } from 'bun:test';
 import { scanAll } from '../src/application/scan.ts';
 import type { ScanProgress } from '../src/domain/types.ts';
-import { singleItem } from '../src/infrastructure/plugins/build.ts';
+import { projectsScanner, singleItem } from '../src/infrastructure/plugins/build.ts';
+import { builtinPlugins } from '../src/plugins/index.ts';
 import { tempDir, write } from './fixture.ts';
 import { start } from './harness.tsx';
 
@@ -23,7 +24,7 @@ test('the scan reports which plugins and measurements are still running', async 
   assert.deepEqual(seen.at(-1), { running: [], found: 1, measured: 1, waiting: 0 });
 });
 
-test('busy rows show a spinner instead of their dot, and the preview shows the row’s scan log', async () => {
+test('busy rows show a spinner, and the preview logs the row’s info first and then each scan step', async () => {
   const root = tempDir();
   write(root, { 'slow/a': 'x' });
   const slow = singleItem({ name: 'Slow tool', group: 'Test', list: `sleep 2; echo ${root}/slow`, clean: 'true' });
@@ -31,10 +32,10 @@ test('busy rows show a spinner instead of their dot, and the preview shows the r
   const row = (f: string) => f.split('\n').find((l) => l.includes('Slow tool') && l.includes('['))! ?? '';
   await waitFor((f) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] \[ \] Slow tool  looking for items…/.test(row(f)) && f.includes('scanning: 1 running'), 'placeholder row with a spinner');
   await press('j', 'j');
-  await waitFor((f) => f.includes('Scan log (still running):') && f.includes('looking for items') && f.includes('running: sleep 2'), 'live log in the preview');
+  await waitFor((f) => /\[INFO\] Slow tool:/.test(f) && /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Looking for items · \d+\.\ds/.test(f) && /^│ +running: sleep 2/m.test(f), 'running step with its live detail');
   await waitFor((f) => f.startsWith('✓') && f.includes('1 found'), 'scan finished');
   await press('TAB', 'j', 'j', 'j', 'j', 'j', 'j');
-  await waitFor((f) => f.includes('Scan log:') && f.includes('found Slow tool') && /measured .* in \d+\.\ds/.test(f) && f.includes('done looking in'), 'full log after the scan, at the end of the preview');
+  await waitFor((f) => /\[INFO\] If removed/.test(f) && /✓ Looked for items: found 1 item · \d+\.\ds/.test(f) && /✓ Measured .*slow: 4\.0K.* · \d+\.\ds/.test(f) && !f.includes('running: sleep 2'), 'finished steps below the info');
   assert.match(row(frame()), /● \[x\] Slow tool/);
 });
 
@@ -50,7 +51,7 @@ test('scan --verbose logs each start and finish; --json emits progress events; s
   const progress = json.stdout.toString().split('\n').filter((l) => l.includes('"progress"')).map((l) => JSON.parse(l));
   assert.ok(progress.length >= 1);
   assert.equal(progress[0].running[0].label, 'Slow tool');
-  write(root, { 'big/a': 'x', 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Big', paths: ['${root}/big'] }] };` });
+  write(root, { ...Object.fromEntries(Array.from({ length: 3000 }, (_, i) => [`big/${i % 30}/${i}`, 'x'])), 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Big', paths: ['${root}/big'] }] };` });
   const stopped = Bun.spawnSync(['bun', BIN, 'scan', '--no-projects', '--only', 'Big'], { cwd: root, env: { ...env, PUTZTEUFEL_WALK_TIMEOUT_MS: '1' } });
   assert.match(stopped.stderr.toString(), /measuring .*big took too long and was stopped/);
 });
@@ -72,4 +73,31 @@ test('a plugin that never finishes is stopped and the scan completes', () => {
   assert.ok(Date.now() - startedAt < 10_000, `${Date.now() - startedAt}ms`);
   assert.match(r.stderr.toString(), /Stuck: stopped looking after 0?\.?7?s?\d*s?; items it found so far are kept|Stuck: stopped looking after/);
   assert.equal(r.exitCode, 0);
+});
+
+test('rows that are done show their dot while other plugins keep the scan running', async () => {
+  const root = tempDir();
+  write(root, { 'app/package.json': '{}', 'app/node_modules/x': 'x', 'slow/a': 'x' });
+  const slow = singleItem({ name: 'Slow tool', group: 'Test', list: `sleep 3; echo ${root}/slow`, clean: 'true' });
+  const plugins = [projectsScanner(builtinPlugins), slow];
+  const { waitFor } = await start(root, 180, 34, plugins);
+  const line = (f: string, text: string) => f.split('\n').find((l) => l.includes(text)) ?? '';
+  await waitFor((f) => /● \[.\] Node/.test(line(f, 'Node')) && /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] \[ \] Slow tool/.test(line(f, 'Slow tool')), 'Node row done while Slow tool is still looking');
+  await waitFor((f) => f.startsWith('✓') && /● \[.\] Slow tool/.test(line(f, 'Slow tool')), 'all done');
+});
+
+test('while an item is measured, the preview shows a running step naming its folder', async () => {
+  const root = tempDir();
+  write(root, { 'slow/a': 'x' });
+  const slow = singleItem({ name: 'Slow measure', group: 'Test', list: `echo ${root}/slow`, clean: 'true' });
+  const measure = slow.measure.bind(slow);
+  slow.measure = async (target) => {
+    await Bun.sleep(2500);
+    return measure(target);
+  };
+  const { press, waitFor } = await start(root, 180, 34, [slow]);
+  await waitFor((f) => f.includes('] Slow measure'), 'item row');
+  await press('j', 'j');
+  await waitFor((f) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Measuring .*slow · \d+\.\ds/.test(f) && /✓ Looked for items: found 1 item/.test(f), 'running measure step naming the folder');
+  await waitFor((f) => f.startsWith('✓') && /✓ Measured .*slow: /.test(f), 'measure step done');
 });

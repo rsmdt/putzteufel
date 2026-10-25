@@ -89,23 +89,24 @@ export function shell(command: string, cwd?: string, timeout = 120_000, signal?:
 
 export function limiter(concurrency: number) {
   let active = 0;
-  const queue: (() => void)[] = [];
+  const queue: { priority: number; run: () => void }[] = [];
   const next = () => {
     if (active < concurrency && queue.length) {
       active++;
-      queue.shift()!();
+      queue.shift()!.run();
     }
   };
-  return <T>(task: () => Promise<T>): Promise<T> =>
+  return <T>(task: () => Promise<T>, priority = 0): Promise<T> =>
     new Promise<T>((resolve, reject) => {
-      queue.push(() =>
+      const run = () =>
         task()
           .then(resolve, reject)
           .finally(() => {
             active--;
             next();
-          }),
-      );
+          });
+      const at = queue.findIndex((q) => q.priority > priority);
+      queue.splice(at < 0 ? queue.length : at, 0, { priority, run });
       next();
     });
 }

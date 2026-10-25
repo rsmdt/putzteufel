@@ -1,4 +1,4 @@
-import { type Activity, type Estimate, type Plugin, type ScanContext, type ScanLogEntry, type ScanProgress, type Target, type TargetDraft } from '../domain/types.ts';
+import { type Activity, type Estimate, type Plugin, type ScanContext, type ScanProgress, type ScanStep, type Target, type TargetDraft } from '../domain/types.ts';
 import { human } from '../domain/format.ts';
 import { tildify } from '../domain/paths.ts';
 import { forgetSizes } from '../infrastructure/measure.ts';
@@ -13,7 +13,7 @@ const PLUGIN_TIMEOUT = Number(process.env.PUTZTEUFEL_PLUGIN_TIMEOUT_MS) || 5 * 6
 interface ScanExtras {
   onFound?: (t: Target) => void;
   onProgress?: (progress: ScanProgress) => void;
-  onLog?: (entry: ScanLogEntry) => void;
+  onStep?: (step: ScanStep) => void;
   estimates?: Map<string, Estimate>;
 }
 
@@ -42,10 +42,14 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
   };
   const labelOf = (plugin: Plugin) => (plugin.item && plugin.item !== plugin.name ? `${plugin.name} / ${plugin.item}` : plugin.name);
   const ownersOf = (plugin: Plugin) => plugin.owners ?? [plugin.name];
-  const log = (plugins: string[], text: string, targetId?: number) => extras.onLog?.({ at: Date.now(), plugins, targetId, text });
-  const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)}s`;
+  const update = (step: ScanStep, change: Partial<ScanStep>) => {
+    Object.assign(step, change);
+    extras.onStep?.({ ...step });
+  };
+  const ageOf = (t: Target) => (t.ageDays === undefined ? '' : `, last changed ${Math.floor(t.ageDays)}d ago`);
 
   const gaveUp = new Set<Plugin>();
+  const foundBy = new Map<Plugin, number>();
   const accept = (plugin: Plugin) => (draft: TargetDraft) => {
     if (ctx.signal.aborted || gaveUp.has(plugin)) return;
     const owner = draft.plugin ?? plugin.name;
@@ -65,13 +69,16 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
     };
     if (!target.paths.length && !target.listed.length) {
       onError(`${plugin.name}: "${target.label}" lists no affected files, skipped`);
-      log([owner], `skipped ${tildify(target.label)}: it lists no affected files`);
+      update({ id: `skip:${target.id}`, plugins: [owner], state: 'stopped', title: '' }, { title: `Skipped ${tildify(target.label)}: it lists no affected files` });
       return;
     }
     counts.found++;
-    log([owner], `found ${tildify(target.label)}${target.item && target.item !== target.label ? ` (${target.item})` : ''}`, target.id);
+    foundBy.set(plugin, (foundBy.get(plugin) ?? 0) + 1);
+    const subject = target.paths.map(tildify).join(', ') || tildify(target.label);
+    const step: ScanStep = { id: `measure:${target.id}`, plugins: [owner], targetId: target.id, state: 'queued', title: '' };
+    update(step, { title: `Waiting to measure ${subject}` });
+    applyEstimate(target, extras.estimates?.get(target.key));
     if (extras.onFound) {
-      applyEstimate(target, extras.estimates?.get(target.key));
       target.selected = preselect(target, ctx.recentDays, ctx.olderThan);
       extras.onFound(target);
     }
@@ -79,25 +86,22 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
       measureLimit(async () => {
         if (ctx.signal.aborted) return;
         const id = `measure:${target.id}`;
-        const started = Date.now();
-        const where = target.paths.map(tildify).join(', ');
-        begin({ id, kind: 'measure', label: `${target.plugin}: ${tildify(target.label)}`, plugins: [target.plugin], targetId: target.id, detail: where });
-        if (where) log([target.plugin], `measuring ${where}`, target.id);
+        begin({ id, kind: 'measure', label: `${target.plugin}: ${tildify(target.label)}`, plugins: [target.plugin], targetId: target.id, detail: target.paths.map(tildify).join(', ') });
+        update(step, { state: 'running', title: `Measuring ${subject}`, startedAt: Date.now() });
         await plugin.measure(target).finally(() => {
           counts.measured++;
           end(id);
         });
-        log([target.plugin], target.size === undefined ? `nothing to measure on disk (${seconds(started)})` : `measured ${human(target.size)}${target.ageDays === undefined ? '' : `, last changed ${Math.floor(target.ageDays)}d ago`} in ${seconds(started)}`, target.id);
         if (target.partial) {
           onError(`${target.plugin}: measuring ${tildify(target.label)} took too long and was stopped; it is at least ${human(target.size)}`);
-          log([target.plugin], `measuring stopped after the time limit; at least ${human(target.size)}`, target.id);
-        }
+          update(step, { state: 'stopped', title: `Stopped measuring ${subject} at the time limit: at least ${human(target.size)}`, endedAt: Date.now() });
+        } else update(step, { state: 'done', title: target.size === undefined ? `Found ${subject}, nothing on disk to measure` : `Measured ${subject}: ${human(target.size)}${ageOf(target)}`, endedAt: Date.now() });
         target.estimated = undefined;
         if (!target.touched) target.selected = preselect(target, ctx.recentDays, ctx.olderThan);
         onTarget(target);
-      }).catch((e: Error) => {
+      }, target.estimated ? (target.size ?? 0) : Number.MAX_SAFE_INTEGER).catch((e: Error) => {
         onError(`${plugin.name}: ${e.message}`);
-        log([target.plugin], `failed: ${e.message}`, target.id);
+        update(step, { state: 'failed', title: `Measuring ${subject} failed: ${e.message.split('\n')[0]}`, endedAt: Date.now() });
         onTarget(target);
       }),
     );
@@ -114,16 +118,15 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
         const owners = ownersOf(p);
         const started = Date.now();
         begin({ id, kind: 'scan', label: labelOf(p), plugins: owners, group: p.owners ? undefined : p.group });
-        log(owners, `looking for ${p.item && p.item !== p.name ? p.item.toLowerCase() : 'items'}`);
-        let lastNote = 0;
+        const what = p.item && p.item !== p.name ? p.item.toLowerCase() : 'items';
+        const step: ScanStep = { id, plugins: owners, state: 'running', title: '' };
+        update(step, { title: `Looking for ${what}`, startedAt: started });
+        let failed = false;
         const note = (detail: string) => {
           const activity = running.get(id);
           if (activity) running.set(id, { ...activity, detail });
           report();
-          if (Date.now() - lastNote > 1000 || detail.startsWith('running:')) {
-            lastNote = Date.now();
-            log(owners, detail);
-          }
+          update(step, { detail });
         };
         let timer: ReturnType<typeof setTimeout> | undefined;
         const own = new AbortController();
@@ -135,7 +138,8 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
           .then(() => 'done' as const)
           .catch((e: Error) => {
             onError(`${p.name}: ${e.message}`);
-            log(owners, `failed: ${e.message.split('\n')[0]}`);
+            failed = true;
+            update(step, { state: 'failed', title: `Looking for ${what} failed: ${e.message.split('\n')[0]}`, detail: undefined, endedAt: Date.now() });
             return 'done' as const;
           });
         return Promise.race([work, timeout]).then((how) => {
@@ -146,8 +150,11 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
             gaveUp.add(p);
             own.abort();
             onError(`${labelOf(p)}: stopped looking after ${Math.round(PLUGIN_TIMEOUT / 1000)}s; items it found so far are kept`);
-            log(owners, `stopped looking after ${seconds(started)}: it took too long`);
-          } else log(owners, `done looking in ${seconds(started)}`);
+            update(step, { state: 'stopped', title: `Stopped looking for ${what}: it took too long; items found so far are kept`, detail: undefined, endedAt: Date.now() });
+          } else if (!failed) {
+            const found = foundBy.get(p) ?? 0;
+            update(step, { state: 'done', title: `Looked for ${what}: found ${found === 0 ? 'nothing' : found === 1 ? '1 item' : `${found} items`}`, detail: undefined, endedAt: Date.now() });
+          }
         });
       }),
     );

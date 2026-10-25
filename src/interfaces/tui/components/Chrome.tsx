@@ -15,12 +15,8 @@ const MODE_LABELS: Record<Context, string> = {
   tools: 'TOOLS',
   suggest: 'TOOLS',
   review: 'REVIEW',
-  progress: 'CLEANING',
-  failure: 'FAILED',
-  done: 'DONE',
   help: 'HELP',
   helpSearch: 'HELP',
-  messages: 'MESSAGES',
   sort: 'SORT',
   theme: 'THEME',
   welcome: 'WELCOME',
@@ -28,17 +24,15 @@ const MODE_LABELS: Record<Context, string> = {
 
 export function modeColor(context: Context, theme: Theme): string {
   if (context === 'filter' || context === 'tools' || context === 'suggest') return theme.warn;
-  if (context === 'review' || context === 'failure') return theme.error;
-  if (context === 'done') return theme.ok;
-  if (['help', 'helpSearch', 'messages', 'sort', 'theme', 'welcome'].includes(context)) return theme.muted;
+  if (context === 'review') return theme.error;
+  if (['help', 'helpSearch', 'sort', 'theme', 'welcome'].includes(context)) return theme.muted;
   return theme.accent;
 }
 
 const PILL_WIDTH = 10;
 
-function ModePill({ context }: { context: Context }) {
+function ModePill({ context, label = MODE_LABELS[context] }: { context: Context; label?: string }) {
   const { theme } = useLook();
-  const label = MODE_LABELS[context];
   const pad = PILL_WIDTH - label.length;
   return (
     <strong fg={theme.panel} bg={modeColor(context, theme)}>
@@ -76,13 +70,13 @@ function Spinner({ active }: { active: boolean }) {
   return <strong fg={active ? theme.accent : theme.ok}>{active ? `${icons.spinner[frame % icons.spinner.length]} ` : `${icons.done} `}</strong>;
 }
 
-export function HeaderBar({ context, width, segments, busy }: { context: Context; width: number; segments: Segment[]; busy: boolean }) {
+export function HeaderBar({ context, width, segments, busy, mode }: { context: Context; width: number; segments: Segment[]; busy: boolean; mode?: string }) {
   const { theme } = useLook();
   const shown = fitSegments(segments, width - PILL_WIDTH - 4);
   return (
     <text wrapMode="none" fg={theme.text}>
       <Spinner active={busy} />
-      <ModePill context={context} />
+      <ModePill context={context} label={mode} />
       {' '}
       {shown.map((s, i) => (
         <span key={i}>
@@ -94,18 +88,15 @@ export function HeaderBar({ context, width, segments, busy }: { context: Context
   );
 }
 
-export function MessageBar({ messages, width }: { messages: Message[]; width: number }) {
+export function MessageBar({ message, width }: { message?: Message; width: number }) {
   const { theme, icons } = useLook();
-  const last = messages.at(-1);
-  if (!last) return <text> </text>;
-  const color = last.level === 'error' ? theme.error : last.level === 'warn' ? theme.warn : theme.muted;
-  const more = messages.length > 1 ? `  (${messages.length} messages, w shows all)` : '';
+  if (!message) return <text> </text>;
+  const color = message.level === 'error' ? theme.error : message.level === 'warn' ? theme.warn : theme.muted;
   return (
     <text wrapMode="none">
-      <span fg={color}>{`${icons.caps[last.level]} `}</span>
-      <span fg={theme.border}>{`${clock(last.at)} `}</span>
-      <span fg={last.level === 'info' ? theme.text : color}>{fit(last.text, Math.max(10, width - 12 - more.length))}</span>
-      <span fg={theme.border}>{more}</span>
+      <span fg={color}>{`${icons.caps[message.level]} `}</span>
+      <span fg={theme.border}>{`${clock(message.at)} `}</span>
+      <span fg={message.level === 'info' ? theme.text : color}>{fit(message.text, Math.max(10, width - 12))}</span>
     </text>
   );
 }

@@ -67,11 +67,17 @@ export interface Activity {
   startedAt: number;
 }
 
-export interface ScanLogEntry {
-  at: number;
+export type StepState = 'queued' | 'running' | 'done' | 'failed' | 'stopped';
+
+export interface ScanStep {
+  id: string;
   plugins: string[];
   targetId?: number;
-  text: string;
+  state: StepState;
+  title: string;
+  detail?: string;
+  startedAt?: number;
+  endedAt?: number;
 }
 
 export interface ScanProgress {

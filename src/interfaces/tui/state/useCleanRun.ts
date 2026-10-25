@@ -1,68 +1,51 @@
 import { useRef, useState } from 'react';
 import { type Operation } from '../../../infrastructure/oplog.ts';
-import { type Decision, type RunPlan, type Step, planSteps } from '../../../domain/run-plan.ts';
+import { type RunPlan, type Step, planSteps } from '../../../domain/run-plan.ts';
 import { type RunResult, runClean } from '../../../application/clean.ts';
-
-interface Failure {
-  step: Step;
-  error: string;
-}
 
 interface CleanRun {
   steps: Step[];
-  finishedOrder: string[];
-  failure?: Failure;
-  done: boolean;
-  freed: number;
+  active: boolean;
+  stopping: boolean;
+  stepFor: (targetId: number) => Step | undefined;
   start: (plan: RunPlan, onFinish: (result: RunResult) => void) => void;
-  decide: (decision: Decision) => void;
+  abort: () => void;
   reset: () => void;
 }
 
 export function useCleanRun(onOperation: (operation: Operation) => void): CleanRun {
   const [steps, setSteps] = useState<Step[]>([]);
-  const [finishedOrder, setFinishedOrder] = useState<string[]>([]);
-  const [failure, setFailure] = useState<Failure | undefined>();
-  const [done, setDone] = useState(false);
-  const [freed, setFreed] = useState(0);
-  const resolver = useRef<((d: Decision) => void) | null>(null);
+  const [active, setActive] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const controller = useRef<AbortController | null>(null);
 
   const start = (plan: RunPlan, onFinish: (result: RunResult) => void) => {
-    setSteps(planSteps(plan));
-    setFinishedOrder([]);
-    setDone(false);
-    setFreed(0);
-    runClean(plan, {
-      onStep: (step) => {
-        setSteps((all) => all.map((s) => (s.id === step.id ? step : s)));
-        if (step.state === 'done' || step.state === 'failed' || step.state === 'skipped') setFinishedOrder((order) => [...order.filter((id) => id !== step.id), step.id]);
-        if (step.kind === 'item' && step.state === 'done') setFreed((n) => n + (step.bytes ?? 0));
-      },
-      onOperation,
-      onFailure: (step, error) =>
-        new Promise<Decision>((resolve) => {
-          resolver.current = resolve;
-          setFailure({ step, error });
-        }),
-    }).then((result) => {
-      setFreed(result.freed);
-      setDone(true);
-      onFinish(result);
-    });
+    const latest = new Map(planSteps(plan).map((s) => [s.id, s]));
+    setSteps([...latest.values()]);
+    setActive(true);
+    setStopping(false);
+    controller.current = new AbortController();
+    const onStep = (step: Step) => {
+      latest.set(step.id, step);
+      setSteps((all) => all.map((s) => (s.id === step.id ? step : s)));
+    };
+    runClean(plan, { onStep, onOperation }, controller.current.signal)
+      .catch((e: Error): RunResult => ({ freed: 0, cleaned: new Set(), aborted: true, steps: [...latest.values()], error: e.message }))
+      .then((result) => {
+        setActive(false);
+        setStopping(false);
+        onFinish(result);
+      });
   };
 
-  const decide = (decision: Decision) => {
-    resolver.current?.(decision);
-    resolver.current = null;
-    setFailure(undefined);
+  const abort = () => {
+    setStopping(true);
+    controller.current?.abort();
   };
 
-  const reset = () => {
-    setSteps([]);
-    setFinishedOrder([]);
-    setDone(false);
-    setFreed(0);
-  };
+  const reset = () => setSteps([]);
 
-  return { steps, finishedOrder, failure, done, freed, start, decide, reset };
+  const stepFor = (targetId: number) => steps.find((s) => s.id === `item:${targetId}`);
+
+  return { steps, active, stopping, stepFor, start, abort, reset };
 }

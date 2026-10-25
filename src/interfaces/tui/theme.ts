@@ -70,6 +70,7 @@ export type IconSet = 'unicode' | 'ascii' | 'nerd';
 export interface Icons {
   swatch: string;
   running: string;
+  waiting: string;
   pending: string;
   done: string;
   failed: string;
@@ -85,6 +86,7 @@ export interface Icons {
 const UNICODE: Icons = {
   swatch: '●',
   running: '◌',
+  waiting: '◌',
   pending: '·',
   done: '✓',
   failed: '✗',
@@ -119,6 +121,7 @@ export const ICONS: Record<IconSet, Icons> = {
   ascii: {
     swatch: '*',
     running: '>',
+    waiting: ':',
     pending: '.',
     done: '+',
     failed: 'x',

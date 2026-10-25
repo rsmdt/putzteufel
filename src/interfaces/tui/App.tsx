@@ -9,17 +9,18 @@ import { isYounger, preselect } from '../../domain/impact.ts';
 import { tildify } from '../../domain/paths.ts';
 import { overlapIndex, uniqueSize } from '../../domain/overlap.ts';
 import { type Estimate } from '../../domain/types.ts';
-import { missingTools } from '../../domain/run-plan.ts';
+import { missingTools, stepsAffecting } from '../../domain/run-plan.ts';
 import { toolSuggestions } from '../../domain/suggest.ts';
 import { installTool } from '../../application/tools.ts';
 import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
 import { createDispatch, type Focus, type Overlay } from './input/dispatch.ts';
-import { type Context, keyToken, printable, resolve } from './keys.ts';
+import { type Action, type Context, keyToken, printable, resolve } from './keys.ts';
 import { LookContext } from './look.ts';
 import { ancestry } from './map/layout.ts';
 import { browseMap, currentEntry, currentLevel } from './model/browse.ts';
-import { legendLines, reviewLines } from './model/explain.ts';
-import { type Level, type Message, clock, message } from './model/messages.ts';
+import { type Line, legendLines, reviewLines } from './model/explain.ts';
+import { runLogSteps, stepLines } from './model/log.ts';
+import { type Level, type Message, message } from './model/messages.ts';
 import { type Row, buildMap, buildRows, colorIndex, groupTargets, ownerLabel, sectionKey } from './model/rows.ts';
 import { DEFAULT_SORT, type Sort, describeSort } from '../../domain/sort.ts';
 import { useBrowse } from './state/useBrowse.ts';
@@ -29,8 +30,6 @@ import { usePreview } from './state/usePreview.ts';
 import { useScan } from './state/useScan.ts';
 import { ICONS, type IconSet, THEMES, themeNamed } from './theme.ts';
 import { HelpDialog, helpLines } from './views/dialogs/Help.tsx';
-import { MessagesDialog } from './views/dialogs/Messages.tsx';
-import { ProgressDialog } from './views/dialogs/Progress.tsx';
 import { ReviewDialog } from './views/dialogs/Review.tsx';
 import { dialogRows } from './views/dialogs/shared.tsx';
 import { SortDialog } from './views/dialogs/Sort.tsx';
@@ -40,13 +39,13 @@ import { ToolsDialog } from './views/dialogs/Tools.tsx';
 import { WelcomeDialog } from './views/dialogs/Welcome.tsx';
 import { useTicker } from './hooks.ts';
 import { FilesPane } from './views/FilesPane.tsx';
-import { ListPane } from './views/ListPane.tsx';
+import { type Busy, ListPane } from './views/ListPane.tsx';
 import { MAP_MIN_WIDTH, MapPane, type MapMode } from './views/MapPane.tsx';
 import { PreviewPane, previewRows } from './views/PreviewPane.tsx';
 
 const AGE_STEPS = [0, 1, 3, 7, 14, 30, 60, 90, 180, 365];
 const SUNBURST_DEPTH = 3;
-
+const LOCKED_WHILE_CLEANING = new Set<Action>(['toggle', 'all', 'ageUp', 'ageDown', 'clean', 'rescan', 'install', 'trash', 'quit']);
 
 export interface AppProps {
   plugins: Plugin[];
@@ -65,8 +64,8 @@ export interface AppProps {
 
 export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unicode', theme: initialTheme, firstRun = false, onSaveState, onOperation = logOperation, estimates, onScanned, onExit }: AppProps) {
   const { width, height } = useTerminalDimensions();
-  const [messages, setMessages] = useState<Message[]>(configErrors.map((e) => message(e, 'error')));
-  const say = (text: string, level: Level = 'info') => setMessages((all) => [...all.slice(-199), message(text, level)]);
+  const [latest, setLatest] = useState<Message | undefined>(configErrors.length ? message(configErrors.join(' · '), 'error') : undefined);
+  const say = (text: string, level: Level = 'info') => setLatest(message(text, level));
   const minAgeRef = useRef(ctx.olderThan);
   const [minAge, setMinAge] = useState(ctx.olderThan);
   const scan = useScan(plugins, ctx, minAgeRef, (text) => say(text, 'warn'), { estimates, onScanned });
@@ -100,7 +99,6 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const [helpQuery, setHelpQuery] = useState('');
   const [helpSearching, setHelpSearching] = useState(false);
   const [previewOffset, setPreviewOffset] = useState(0);
-  const cleanedRef = useRef<Set<number>>(new Set());
 
   const look = useMemo(() => ({ theme: themeNamed(themeName), icons: ICONS[icons] }), [themeName, icons]);
   const theme = look.theme;
@@ -117,7 +115,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const { browse } = browser;
 
   const targets = scan.targets.current;
-  const scanningPlugins = new Set(scan.progress.running.filter((a) => a.kind === 'scan').flatMap((a) => a.plugins));
+  const scanningPlugins = new Set(scan.progress.running.filter((a) => a.kind === 'scan' && a.plugins.length === 1).flatMap((a) => a.plugins));
+  const projectWalk = scan.progress.running.find((a) => a.kind === 'scan' && a.plugins.length > 1);
   const measuringTargets = new Set(scan.progress.running.flatMap((a) => (a.targetId === undefined ? [] : [a.targetId])));
   const withTargets = new Set(targets.map((t) => t.plugin));
   const pending = scan.progress.running.flatMap((a) => (a.kind === 'scan' && a.group && !withTargets.has(a.plugins[0]) ? [{ plugin: a.plugins[0], group: a.group }] : []));
@@ -138,26 +137,34 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const shared = (t: Target) => [...new Set(overlap.sharedWith(t).map(ownerLabel))];
   const ownersOf = (p: string) => (browse ? [...new Set(overlap.owners(p).filter((t) => t.id !== browse.target.id).map(ownerLabel))] : []);
   const exact = useExactFreed(overlay === 'review', selected);
-  const targetBusy = (t: Target) => scan.scanning && (measuringTargets.has(t.id) || !scan.measured.current.has(t.id));
-  const rowBusy = (row: Row): boolean => {
+  const targetBusy = (t: Target): Busy => {
+    const cleaning = run.active ? run.stepFor(t.id)?.state : undefined;
+    if (cleaning === 'running' || measuringTargets.has(t.id)) return 'active';
+    if (cleaning === 'pending' || (scan.scanning && !scan.measured.current.has(t.id))) return 'waiting';
+    return undefined;
+  };
+  const combine = (states: Busy[]): Busy => (states.includes('active') ? 'active' : states.includes('waiting') ? 'waiting' : undefined);
+  const pluginBusy = (name: string, list: Target[]): Busy => (scanningPlugins.has(name) ? 'active' : combine(list.map(targetBusy)));
+  const rowBusy = (row: Row): Busy => {
     if (row.kind === 'target') return targetBusy(row.target);
-    if (row.kind === 'plugin') return scanningPlugins.has(row.name) || row.targets.some(targetBusy);
+    if (row.kind === 'plugin') return pluginBusy(row.name, row.targets);
     const groupsOf = row.kind === 'section' ? groups.filter(([g]) => sectionKey(g) === row.key) : groups.filter(([g]) => g === row.name);
-    return groupsOf.some(([, plugins]) => plugins.some(([name, list]) => (list.length === 0 && scanningPlugins.has(name)) || list.some(targetBusy)));
+    return combine(groupsOf.flatMap(([, plugins]) => plugins.map(([name, list]) => pluginBusy(name, list))));
   };
-  const spinnerFrame = useTicker(scan.scanning);
+  const hasRunSteps = (row: Row) => (row.kind === 'target' ? [row.target] : row.kind === 'plugin' ? row.targets : []).some((t) => run.stepFor(t.id));
+  const spinnerFrame = useTicker(scan.scanning || run.active);
   const spinner = look.icons.spinner[spinnerFrame % look.icons.spinner.length];
-  const logLines = (row?: Row): string[] => {
+  const logLines = (row?: Row): Line[] => {
     if (!row || row.kind === 'section' || row.kind === 'group') return [];
-    const entries = row.kind === 'plugin' ? scan.logFor(row.name) : scan.logFor(row.target.plugin, row.target.id);
-    return entries.slice(-Math.max(3, previewRows(previewHeight) - 2)).map((e) => `  ${clock(e.at)}  ${e.text}`);
+    const scanned = row.kind === 'plugin' ? scan.stepsFor(row.name) : scan.stepsFor(row.target.plugin, row.target.id);
+    const cleaning = runLogSteps(stepsAffecting(run.steps, row.kind === 'plugin' ? row.targets : [row.target]));
+    return stepLines([...scanned, ...cleaning], spinner, look.icons, theme);
   };
-  const previewLines = usePreview({ row: current, browse, descriptions, recentDays: ctx.recentDays, minAge, theme, overlap, log: logLines(current), busy: current ? rowBusy(current) : false, version: scan.version });
+  const preview = usePreview({ row: current, browse, descriptions, recentDays: ctx.recentDays, minAge, theme, overlap, log: logLines(current), version: scan.version });
 
   const overlayContext = (): Context | null => {
     if (!overlay) return null;
     if (overlay === 'help') return helpSearching ? 'helpSearch' : 'help';
-    if (overlay === 'progress') return run.failure ? 'failure' : run.done ? 'done' : 'progress';
     return overlay;
   };
   const paneFocus: Focus = focus === 'map' && !showMap ? 'list' : focus;
@@ -183,7 +190,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     setCursor(next);
   };
 
-  const toggle = (list: Target[]) => {
+  const cleaned = (t: Target) => run.stepFor(t.id)?.state === 'done';
+
+  const toggle = (all: Target[]) => {
+    const list = all.filter((t) => !cleaned(t));
     const value = !list.every((t) => t.selected);
     list.forEach((t) => {
       t.selected = value;
@@ -199,7 +209,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     const days = AGE_STEPS[Math.max(0, Math.min(AGE_STEPS.length - 1, from + direction))];
     minAgeRef.current = days;
     setMinAge(days);
-    for (const t of scan.targets.current) if (t.ageDays !== undefined) t.selected = preselect(t, ctx.recentDays, days);
+    for (const t of scan.targets.current) if (t.ageDays !== undefined && !cleaned(t)) t.selected = preselect(t, ctx.recentDays, days);
     scan.bump();
     say(days ? `Selected items older than ${days} days (${scan.targets.current.filter((t) => t.selected).length} selected).` : 'Age threshold off: items of any age are selected by their tag.');
   };
@@ -234,14 +244,23 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
 
   const runCleanup = () => {
     const targetsToClean = [...selected];
-    openDialog('progress');
+    setOverlay(null);
+    browser.close();
+    setFocus('list');
+    const plugins = new Set(targetsToClean.map((t) => t.plugin));
+    const rowsToOpen = groups.flatMap(([category, list]) => list.filter(([plugin]) => plugins.has(plugin)).map(([plugin]) => ({ category, key: `${category}/${plugin}` })));
+    setCollapsed((s) => new Set([...s].filter((k) => !rowsToOpen.some((r) => k === r.category || k === sectionKey(r.category)))));
+    setExpanded((s) => new Set([...s, ...rowsToOpen.map((r) => r.key)]));
+    if (targetsToClean[0]) setPendingKey(`t${targetsToClean[0].id}`);
     const earlier = uninstallLater ? installedHere : [];
+    say(`Cleaning ${targetsToClean.length} item(s). esc stops it: a folder being deleted stops at its next entry, a command is killed.`);
     run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), installedEarlier: earlier, uninstallAfter, hooks, useTrash, trashAvailable: canTrash, minAge: minAgeRef.current }, (result) => {
-      result.cleaned.forEach((id) => cleanedRef.current.add(id));
+      for (const t of targetsToClean) if (result.cleaned.has(t.id)) t.selected = false;
+      scan.bump();
       const removed = new Set(result.steps.filter((s) => s.kind === 'uninstall' && s.state === 'done').map((s) => s.id.slice('uninstall:'.length)));
       setInstalledHere((tools) => tools.filter((t) => !removed.has(t.bin)));
       const failed = result.steps.filter((s) => s.state === 'failed').length;
-      say(`Cleaned ${result.cleaned.size} of ${targetsToClean.length} item(s), freed about ${human(result.freed)}${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}.`, failed || result.aborted ? 'warn' : 'info');
+      say(`Cleaned ${result.cleaned.size} of ${targetsToClean.length} item(s), freed about ${human(result.freed)}${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}${result.error ? `; stopped by an error: ${result.error}` : ''}.`, result.error ? 'error' : failed || result.aborted ? 'warn' : 'info');
     });
   };
 
@@ -278,17 +297,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     setUninstallAfter(true);
     if (!added.length) return;
     setInstalledHere((tools) => [...tools, ...added.filter((a) => !tools.some((t) => t.bin === a.bin))]);
-    scan.rescan();
-  };
-
-  const finishClean = () => {
-    scan.targets.current = scan.targets.current.filter((t) => !cleanedRef.current.has(t.id));
-    cleanedRef.current = new Set();
-    setOverlay(null);
-    browser.close();
     run.reset();
-    moveTo(cursorRef.current);
-    scan.bump();
+    scan.rescan();
   };
 
   const focusOrder: Focus[] = showMap ? ['list', 'preview', 'map'] : ['list', 'preview'];
@@ -303,7 +313,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     listRows,
     pageRows,
     previewPage: previewRows(previewHeight),
-    previewMax: Math.max(0, previewLines.length - previewRows(previewHeight)),
+    previewMax: Math.max(0, preview.lines.length - previewRows(previewHeight)),
     toggle,
     reveal,
     browser,
@@ -338,10 +348,9 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     },
     startClean,
     runCleanup,
-    finishClean,
-    decide: run.decide,
     rescan: () => {
       moveTo(0);
+      run.reset();
       scan.rescan();
       say('Rescanning…');
     },
@@ -364,6 +373,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     say: (text) => say(text),
     quit: () => {
       scan.abort();
+      run.abort();
       onExit();
     },
   });
@@ -392,7 +402,15 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
       return;
     }
     const action = resolve(context, token);
-    if (action) dispatch(context, action);
+    if (!action) return;
+    if (run.active && !overlay) {
+      if (action === 'cancel') {
+        run.abort();
+        return say('Stopping the cleanup: the running command is killed, a folder being deleted stops at its next entry…', 'warn');
+      }
+      if (LOCKED_WHILE_CLEANING.has(action)) return say(`A cleanup is running. Wait for it to finish, or press esc to stop it${action === 'quit' ? ' first, so putzteufel can still uninstall its tools and run your after hook' : ''}.`, 'warn');
+    }
+    dispatch(context, action);
   };
 
   useKeyboard(handleKey);
@@ -413,6 +431,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const focusColor = modeColor(baseContext, theme);
   const mapHidden = mapMode !== 'off' && !showMap;
   const scanningShown = scan.scanning;
+  const items = run.steps.filter((s) => s.kind === 'item');
+  const finishedItems = items.filter((s) => s.state === 'done' || s.state === 'failed' || s.state === 'skipped').length;
+  const freed = items.reduce((n, s) => n + (s.state === 'done' ? (s.bytes ?? 0) : 0), 0);
+  const cleaning = run.active ? `cleaning ${finishedItems}/${items.length} · ${human(freed)} freed` : '';
 
   const listEmpty = scan.scanning
     ? { message: 'Scanning for clutter…', detail: ctx.roots.map(tildify) }
@@ -429,7 +451,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <HeaderBar
           context={context}
           width={width}
-          busy={scan.scanning || installing || (overlay === 'progress' && !run.done)}
+          busy={scan.scanning || installing || run.active}
+          mode={run.active && !overlay ? (run.stopping ? 'STOPPING' : 'CLEANING') : undefined}
           segments={[
             { text: 'putzteufel', color: theme.accent, priority: 'optional', bold: true },
             { text: `${targets.length} found`, priority: 'essential' },
@@ -438,6 +461,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
             ...(scanningShown ? [{ text: `scanning: ${scan.progress.running.length} running, ${scan.progress.waiting} waiting`, color: theme.accent, priority: 'essential' as const }] : []),
+            ...(projectWalk ? [{ text: `projects: ${projectWalk.detail?.split(';')[0] ?? 'starting'}`, color: theme.accent, priority: 'normal' as const }] : []),
+            ...(cleaning ? [{ text: cleaning, color: run.stopping ? theme.warn : theme.accent, priority: 'essential' as const }] : []),
             ...(installing ? [{ text: 'installing tools…', color: theme.warn, priority: 'essential' as const }] : []),
             ...(suggestions.length && !installing ? [{ text: `${suggestions.length} tool suggestion${suggestions.length > 1 ? 's' : ''} (i)`, color: theme.warn, priority: 'essential' as const }] : []),
             ...(mapHidden ? [{ text: `map needs ${MAP_MIN_WIDTH}+ columns, has ${width}`, color: theme.muted, priority: 'essential' as const }] : []),
@@ -461,12 +486,14 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
                 young={young}
                 shared={shared}
                 busy={rowBusy}
+                runStep={(t) => run.stepFor(t.id)}
                 spinner={spinner}
+                frame={spinnerFrame}
                 bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(uniqueSize(selected))}`}
                 empty={listEmpty}
               />
             )}
-            <PreviewPane lines={previewLines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={paneFocus === 'preview'} focusColor={focusColor} />
+            <PreviewPane lines={preview.lines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={paneFocus === 'preview'} focusColor={focusColor} followTo={current && (rowBusy(current) !== undefined || hasRunSteps(current)) ? preview.logEnd : undefined} />
           </box>
           {showMap ? (
             <MapPane
@@ -483,15 +510,13 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             />
           ) : null}
         </box>
-        <MessageBar messages={messages} width={width} />
-        <Footer context={baseContext} width={width} prefix={filtering || filter ? `filter: ${filter}${filtering ? '▌' : ''}   ` : ''} />
+        <MessageBar message={latest} width={width} />
+        <Footer context={baseContext} width={width} prefix={`${run.active ? `${cleaning} · esc stops   ` : ''}${filtering || filter ? `filter: ${filter}${filtering ? '▌' : ''}   ` : ''}`} />
         {overlay === 'welcome' ? <WelcomeDialog screen={screen} /> : null}
         {overlay === 'tools' ? <ToolsDialog screen={screen} context="tools" tools={missingTools(selected)} items={selected} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
         {overlay === 'suggest' ? <ToolsDialog screen={screen} context="suggest" tools={suggestions.map((s) => s.tool)} items={targets} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
         {overlay === 'review' ? <ReviewDialog screen={screen} lines={reviewText} offset={dialogOffset} /> : null}
-        {overlay === 'progress' ? <ProgressDialog screen={screen} steps={run.steps} finishedOrder={run.finishedOrder} failure={run.failure} done={run.done} freed={run.freed} /> : null}
         {overlay === 'help' ? <HelpDialog screen={screen} lines={help} offset={dialogOffset} query={helpQuery} searching={helpSearching} /> : null}
-        {overlay === 'messages' ? <MessagesDialog screen={screen} messages={messages} offset={dialogOffset} /> : null}
         {overlay === 'sort' ? <SortDialog screen={screen} sort={sort} cursor={sortCursor} /> : null}
         {overlay === 'theme' ? <ThemeDialog screen={screen} cursor={Math.max(0, THEMES.findIndex((t) => t.name === themeName))} /> : null}
       </box>
