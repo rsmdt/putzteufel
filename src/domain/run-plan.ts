@@ -25,6 +25,9 @@ export interface Step {
   state: StepState;
   detail?: string;
   bytes?: number;
+  progress?: number;
+  startedAt?: number;
+  endedAt?: number;
 }
 
 export type Decision = 'retry' | 'skip' | 'skipAll' | 'abort';
@@ -56,6 +59,18 @@ export function summarize(action: Action, disposed: Disposed[], minAge = 0): str
 export function uninstallList(plan: RunPlan): Tool[] {
   const all = [...plan.install, ...(plan.installedEarlier ?? [])].filter((t) => t.uninstall);
   return all.filter((t, i) => all.findIndex((x) => x.bin === t.bin) === i);
+}
+
+export function stepsAffecting(steps: Step[], targets: Target[]): Step[] {
+  const items = new Set(targets.map((t) => `item:${t.id}`));
+  const plugins = new Set(targets.map((t) => t.plugin));
+  const bins = new Set(targets.flatMap((t) => (t.tool ? [t.tool.bin] : [])));
+  return steps.filter((s) => {
+    const [, ...rest] = s.id.split(':');
+    if (s.kind === 'item') return items.has(s.id);
+    if (s.kind === 'install' || s.kind === 'uninstall') return bins.has(rest.join(':'));
+    return rest.length === 1 || plugins.has(rest.slice(1).join(':'));
+  });
 }
 
 export function planSteps(plan: RunPlan): Step[] {

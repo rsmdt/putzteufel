@@ -12,9 +12,9 @@ function errorText(e: Error & { stderr?: string }): string {
   return (e.stderr || e.message).trim().slice(-400);
 }
 
-export async function installTool(tool: Tool): Promise<ToolResult> {
+export async function installTool(tool: Tool, signal?: AbortSignal): Promise<ToolResult> {
   if (!tool.install) return { ok: false, error: `no install command known for ${tool.bin}` };
-  const failed = await shell(tool.install, undefined, INSTALL_TIMEOUT).then(
+  const failed = await shell(tool.install, undefined, INSTALL_TIMEOUT, signal).then(
     () => undefined,
     (e: Error & { stderr?: string }) => errorText(e),
   );

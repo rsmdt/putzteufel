@@ -147,3 +147,23 @@ test('a failing item asks what to do: retry, skip, skip all or abort', async () 
   assert.equal(questions, 1);
   assert.deepEqual(skipping.steps.map((s) => s.state), ['failed', 'failed', 'done']);
 });
+
+test('stopping a run kills the running command, skips the rest and still runs the after hook', async () => {
+  const root = tempDir();
+  write(root, { 'one/a': 'x', 'two/b': 'x' });
+  const target = (id: number, name: string, run: string): Target => ({ id, key: String(id), plugin: 'P', group: 'C', label: path.join(root, name), paths: [path.join(root, name)], sizePaths: [], listed: [], commands: [{ run }], impact: 'regenerates', selected: true, size: 10 });
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  let asked = 0;
+  const result = await runClean(
+    { targets: [target(1, 'one', 'sleep 30'), target(2, 'two', `rm -rf "${root}/two"`)], install: [], uninstallAfter: false, hooks: { after: `touch "${root}/after"` }, useTrash: false, trashAvailable: false },
+    { onStep: (step) => step.state === 'running' && step.id === 'item:1' && setTimeout(() => controller.abort(), 200), onFailure: async () => (asked++, 'skip') },
+    controller.signal,
+  );
+  assert.ok(Date.now() - startedAt < 5000, `${Date.now() - startedAt}ms`);
+  assert.equal(result.aborted, true);
+  assert.equal(asked, 0);
+  assert.deepEqual(result.steps.map((s) => s.state), ['failed', 'skipped', 'done']);
+  assert.equal(existsSync(path.join(root, 'two')), true);
+  assert.equal(existsSync(path.join(root, 'after')), true);
+});

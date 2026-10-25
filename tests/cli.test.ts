@@ -84,9 +84,10 @@ test('clean --yes removes the selection, streams steps, logs operations, and his
   assert.equal(clean.code, 0, clean.stderr);
   assert.equal(existsSync(path.join(root, 'alpha/node_modules')), false);
   assert.equal(existsSync(path.join(root, 'bravo/node_modules')), true);
-  const steps = clean.of('step').map((e) => `${e.step.kind}:${e.step.state}`);
-  assert.deepEqual(steps, ['item:running', 'item:done']);
-  assert.equal(clean.of('step')[1].step.key, alpha);
+  const changes = clean.of('step').filter((e) => e.step.progress === null);
+  assert.deepEqual(changes.map((e) => `${e.step.kind}:${e.step.state}`), ['item:running', 'item:done']);
+  assert.ok(clean.of('step').some((e) => e.step.state === 'running' && e.step.progress > 0), 'progress events while deleting');
+  assert.equal(changes[1].step.key, alpha);
   assert.deepEqual(clean.of('done')[0].cleaned, [alpha]);
   const log = readFileSync(path.join(root, 'ops.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(log[0].result, 'done');

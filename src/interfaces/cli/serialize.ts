@@ -75,5 +75,5 @@ export function suggestionJson(s: Suggestion) {
 
 export function stepJson(step: Step, targets: Map<number, Target>) {
   const id = step.kind === 'item' ? Number(step.id.slice(5)) : undefined;
-  return { id: step.id, kind: step.kind, label: step.label, state: step.state, detail: step.detail ?? null, bytes: step.bytes ?? null, key: id === undefined ? null : (targets.get(id)?.key ?? null) };
+  return { id: step.id, kind: step.kind, label: step.label, state: step.state, detail: step.detail ?? null, bytes: step.bytes ?? null, progress: step.progress ?? null, key: id === undefined ? null : (targets.get(id)?.key ?? null) };
 }

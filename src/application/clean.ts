@@ -19,13 +19,16 @@ export interface RunResult {
   cleaned: Set<number>;
   aborted: boolean;
   steps: Step[];
+  error?: string;
 }
+
+const PROGRESS_INTERVAL = 100;
 
 function errorText(e: Error & { stderr?: string }): string {
   return (e.stderr || e.message).trim().slice(-400);
 }
 
-export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<RunResult> {
+export async function runClean(plan: RunPlan, events: RunEvents = {}, signal?: AbortSignal): Promise<RunResult> {
   const steps = planSteps(plan);
   const result: RunResult = { freed: 0, cleaned: new Set(), aborted: false, steps };
   const byId = new Map(steps.map((s) => [s.id, s]));
@@ -34,7 +37,22 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     if (!step) return;
     step.state = state;
     step.detail = detail;
+    step.progress = undefined;
+    if (state === 'running') {
+      step.startedAt = Date.now();
+      step.endedAt = undefined;
+    } else if (state !== 'pending') step.endedAt = Date.now();
     events.onStep?.({ ...step });
+  };
+  const progressOf = (id: string) => {
+    let last = 0;
+    return (fraction: number) => {
+      const step = byId.get(id);
+      if (!step || Date.now() - last < PROGRESS_INTERVAL) return;
+      last = Date.now();
+      step.progress = fraction;
+      events.onStep?.({ ...step });
+    };
   };
   const runHook = async (id: string, command?: string, timeout?: number): Promise<boolean> => {
     if (!command) return true;
@@ -52,11 +70,13 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     return result;
   }
 
+  signal?.addEventListener('abort', () => (result.aborted = true));
   const installed = new Set<string>();
   for (const tool of plan.install) {
     const id = `install:${tool.bin}`;
-    update(id, 'running');
-    const outcome = await installTool(tool);
+    if (result.aborted) break;
+    update(id, 'running', tool.install);
+    const outcome = await installTool(tool, signal);
     if (outcome.ok) installed.add(tool.bin);
     update(id, outcome.ok ? 'done' : 'failed', outcome.error);
   }
@@ -91,8 +111,8 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
       const action = actionFor(t, installed);
       const commands = action.kind === 'commands' ? action.commands : [];
       for (;;) {
-        update(id, 'running');
-        const outcome = await cleanTarget({ ...t, commands }, { useTrash: plan.useTrash, trashAvailable: plan.trashAvailable, minAge: plan.minAge });
+        update(id, 'running', commands.map((c) => describeCommand(c, plan.minAge)).join('; ') || undefined);
+        const outcome = await cleanTarget({ ...t, commands }, { useTrash: plan.useTrash, trashAvailable: plan.trashAvailable, minAge: plan.minAge }, signal, progressOf(id));
         const detail = { commands: commands.map((c) => describeCommand(c, plan.minAge)), paths: outcome.disposed, bytes: t.size };
         if (!outcome.errors.length) {
           result.freed += t.size ?? 0;
@@ -104,6 +124,7 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
         const error = outcome.errors.join('; ');
         update(id, 'failed', error);
         record('failed', error, detail);
+        if (result.aborted) break;
         const decision: Decision = skipAll || !events.onFailure ? 'skip' : await events.onFailure({ ...byId.get(id)! }, error);
         if (decision === 'retry') continue;
         if (decision === 'skipAll') skipAll = true;
@@ -116,6 +137,7 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
     }
     if (!result.aborted) await runHook(`hook:after:${plugin}`, targets[0].hooks?.after);
   }
+  if (result.aborted) skipRest('aborted');
 
   if (plan.uninstallAfter) {
     for (const tool of uninstallList(plan)) {
