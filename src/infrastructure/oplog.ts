@@ -14,7 +14,7 @@ export interface Operation {
   detail?: string;
 }
 
-export function operationsLogPath(): string {
+function operationsLogPath(): string {
   if (process.env.PUTZTEUFEL_LOG) return process.env.PUTZTEUFEL_LOG;
   return process.platform === 'darwin'
     ? path.join(os.homedir(), 'Library', 'Logs', 'putzteufel', 'operations.log')

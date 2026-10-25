@@ -3,7 +3,7 @@ import { LineText } from '../components/Text.tsx';
 import { useLook } from '../look.ts';
 import { type Line } from '../model/explain.ts';
 
-export interface PreviewPaneProps {
+interface PreviewPaneProps {
   lines: Line[];
   offset: number;
   width: number;

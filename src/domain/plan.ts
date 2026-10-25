@@ -6,7 +6,7 @@ import { type RunPlan, actionFor, missingTools } from './run-plan.ts';
 
 export type InstallChoice = 'all' | 'none' | string[];
 
-export interface PlanOptions {
+interface PlanOptions {
   useTrash: boolean;
   trashAvailable: boolean;
   install: InstallChoice;
@@ -15,12 +15,12 @@ export interface PlanOptions {
   minAge: number;
 }
 
-export interface PlanNote {
+interface PlanNote {
   level: 'info' | 'warn' | 'error';
   text: string;
 }
 
-export interface PlannedItem {
+interface PlannedItem {
   target: Target;
   how: 'commands' | 'delete' | 'covered';
   commands: string[];
@@ -40,7 +40,7 @@ export interface Plan {
   run: RunPlan;
 }
 
-export function chosenTools(selected: Target[], choice: InstallChoice): Tool[] {
+function chosenTools(selected: Target[], choice: InstallChoice): Tool[] {
   const missing = missingTools(selected);
   if (choice === 'all') return missing;
   if (choice === 'none') return [];

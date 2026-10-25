@@ -60,7 +60,7 @@ export type Action =
   | 'abort'
   | 'dismiss';
 
-export interface Binding {
+interface Binding {
   action: Action;
   keys: string[];
   label: string;
@@ -151,7 +151,7 @@ export function printable(event: Pick<KeyEvent, 'sequence' | 'ctrl' | 'meta'>): 
   return event.sequence.length === 1 && !event.ctrl && !event.meta && event.sequence >= ' ' ? event.sequence : '';
 }
 
-export function bindingsFor(context: Context): Binding[] {
+function bindingsFor(context: Context): Binding[] {
   return BINDINGS.filter((b) => b.contexts.includes(context));
 }
 
@@ -159,7 +159,7 @@ export function resolve(context: Context, token: string): Action | undefined {
   return bindingsFor(context).find((b) => b.keys.includes(token) || b.keys.includes('any'))?.action;
 }
 
-export function displayKeys(binding: Binding): string {
+function displayKeys(binding: Binding): string {
   return binding.display ?? binding.keys.map((k) => DISPLAY[k] ?? k).join('/');
 }
 
@@ -169,7 +169,7 @@ export function footerHints(context: Context): Hint[] {
     .map((b) => ({ key: displayKeys(b), label: b.label, priority: b.priority ?? 'normal' }));
 }
 
-export interface HelpSection {
+interface HelpSection {
   title: string;
   rows: { keys: string; label: string }[];
 }

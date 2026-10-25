@@ -6,7 +6,7 @@ import { useLook } from '../look.ts';
 import { type Message, clock } from '../model/messages.ts';
 import { type Theme } from '../theme.ts';
 
-export const MODE_LABELS: Record<Context, string> = {
+const MODE_LABELS: Record<Context, string> = {
   list: 'LIST',
   filter: 'FILTER',
   files: 'FILES',
@@ -33,9 +33,9 @@ export function modeColor(context: Context, theme: Theme): string {
   return theme.accent;
 }
 
-export const PILL_WIDTH = 10;
+const PILL_WIDTH = 10;
 
-export function ModePill({ context }: { context: Context }) {
+function ModePill({ context }: { context: Context }) {
   const { theme } = useLook();
   const label = MODE_LABELS[context];
   const pad = PILL_WIDTH - label.length;
@@ -46,14 +46,14 @@ export function ModePill({ context }: { context: Context }) {
   );
 }
 
-export interface Segment {
+interface Segment {
   text: string;
   priority: HintPriority;
   color?: string;
   bold?: boolean;
 }
 
-export function fitSegments(segments: Segment[], width: number): Segment[] {
+function fitSegments(segments: Segment[], width: number): Segment[] {
   const total = (list: Segment[]) => list.reduce((n, s) => n + s.text.length, 0) + Math.max(0, list.length - 1) * HINT_SEPARATOR.length;
   const kept = [...segments];
   for (const priority of ['optional', 'normal'] as HintPriority[]) {
@@ -62,7 +62,7 @@ export function fitSegments(segments: Segment[], width: number): Segment[] {
   return kept;
 }
 
-export const SPINNER_INTERVAL = 80;
+const SPINNER_INTERVAL = 80;
 
 function Spinner({ active }: { active: boolean }) {
   const { theme, icons } = useLook();

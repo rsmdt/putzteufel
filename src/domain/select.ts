@@ -18,7 +18,7 @@ export interface Selector {
 
 const lower = (list?: string[]) => list?.map((s) => s.toLowerCase());
 
-export function matchesFilter(t: Target, filter?: string): boolean {
+function matchesFilter(t: Target, filter?: string): boolean {
   return !filter || [tildify(t.label), t.plugin, t.group, t.item ?? '', ...t.paths].some((field) => fuzzyMatch(field, filter));
 }
 

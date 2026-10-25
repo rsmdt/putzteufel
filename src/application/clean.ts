@@ -7,9 +7,9 @@ import { forgetWhich, shell, which } from '../infrastructure/shell.ts';
 import { tildify } from '../domain/paths.ts';
 import { coveredIn } from '../domain/overlap.ts';
 
-export const INSTALL_TIMEOUT = 30 * 60_000;
+const INSTALL_TIMEOUT = 30 * 60_000;
 
-export interface RunEvents {
+interface RunEvents {
   onStep?: (step: Step) => void;
   onFailure?: (step: Step, error: string) => Promise<Decision>;
   onOperation?: (operation: Operation) => void;

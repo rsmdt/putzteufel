@@ -13,7 +13,7 @@ export interface RunPlan {
   minAge?: number;
 }
 
-export type StepKind = 'hook' | 'install' | 'item' | 'uninstall';
+type StepKind = 'hook' | 'install' | 'item' | 'uninstall';
 
 export type StepState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 

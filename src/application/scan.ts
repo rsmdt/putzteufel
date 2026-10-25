@@ -6,7 +6,7 @@ import { targetKey } from '../domain/key.ts';
 
 let nextId = 1;
 
-export interface ScanExtras {
+interface ScanExtras {
   onFound?: (t: Target) => void;
   estimates?: Map<string, Estimate>;
 }

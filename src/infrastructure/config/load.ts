@@ -8,7 +8,7 @@ import { type PluginDef } from '../../plugins/api.ts';
 import { builtinPlugins } from '../../plugins/index.ts';
 import { SETTING_KEYS, checkShape, validatePlugin, validateProjectEntry } from './validate.ts';
 
-export interface Settings {
+interface Settings {
   roots: string[];
   exclude: string[];
   olderThan: number;

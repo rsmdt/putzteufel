@@ -1,4 +1,4 @@
-export interface FuzzyMatch {
+interface FuzzyMatch {
   score: number;
   positions: number[];
 }

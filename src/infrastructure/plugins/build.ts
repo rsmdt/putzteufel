@@ -8,7 +8,7 @@ export function projectsScanner(defs: PluginDef[]): ProjectsScanner {
   return new ProjectsScanner(defs.flatMap((def) => (def.projects ?? []).map((rule) => ({ ...rule, plugin: def.name, group: def.group }))));
 }
 
-export function itemPlugins(defs: PluginDef[]): ItemPlugin[] {
+function itemPlugins(defs: PluginDef[]): ItemPlugin[] {
   return defs.flatMap((def) => (def.items ?? []).map((spec) => new ItemPlugin(spec, { plugin: def.name, group: def.group })));
 }
 

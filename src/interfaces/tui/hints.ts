@@ -6,12 +6,12 @@ export interface Hint {
   priority: HintPriority;
 }
 
-export interface FittedHint {
+interface FittedHint {
   key: string;
   label: string;
 }
 
-export interface FittedHints {
+interface FittedHints {
   hints: FittedHint[];
   truncated: boolean;
 }
@@ -28,7 +28,7 @@ export function hintsWidth(hints: FittedHint[]): number {
   return hints.reduce((n, h) => n + hintWidth(h), 0) + Math.max(0, hints.length - 1) * HINT_SEPARATOR.length;
 }
 
-export function shortenModifiers(key: string): string {
+function shortenModifiers(key: string): string {
   return key.replace(/ctrl\+/g, '^').replace(/alt\+/g, 'M-').replace(/shift\+/g, 'S-');
 }
 

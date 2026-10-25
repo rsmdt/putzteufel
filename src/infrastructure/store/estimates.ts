@@ -4,7 +4,7 @@ import { type Target } from '../../domain/types.ts';
 import { type Estimate } from '../../domain/types.ts';
 import { statePath } from './state.ts';
 
-export function estimatesPath(): string {
+function estimatesPath(): string {
   return path.join(path.dirname(statePath()), 'sizes.json');
 }
 

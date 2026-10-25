@@ -8,7 +8,7 @@ import { describeCommand } from '../domain/command.ts';
 import { execFileAsync } from './shell.ts';
 import { type Entry, type Target } from '../domain/types.ts';
 
-export interface Measurement {
+interface Measurement {
   size: number;
   linkedBytes: number;
   files: number;

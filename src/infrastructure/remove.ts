@@ -1,13 +1,12 @@
 import { type CleanOptions, type Disposed, disposalFor } from '../domain/disposal.ts';
 import { rm } from 'node:fs/promises';
-import path from 'node:path';
 import { isUnsafeToDelete, tildify } from '../domain/paths.ts';
 import { exists } from './fs.ts';
 import { describeCommand, resolveCommand } from '../domain/command.ts';
 import { execFileAsync, shell, which } from './shell.ts';
 import { type Target } from '../domain/types.ts';
 
-export interface CleanOutcome {
+interface CleanOutcome {
   errors: string[];
   disposed: Disposed[];
 }

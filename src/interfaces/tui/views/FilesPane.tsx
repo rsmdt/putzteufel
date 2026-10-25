@@ -7,7 +7,7 @@ import { useLook } from '../look.ts';
 import { fit } from '../map/layout.ts';
 import { type Browse, currentLevel, entryColor } from '../model/browse.ts';
 
-export interface FilesPaneProps {
+interface FilesPaneProps {
   browse: Browse;
   width: number;
   height: number;

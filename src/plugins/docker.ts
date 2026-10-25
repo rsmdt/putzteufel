@@ -7,12 +7,12 @@ type Row = Record<string, string>;
 
 const UNITS: Record<string, number> = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 };
 
-export function parseSize(text = ''): number | undefined {
+function parseSize(text = ''): number | undefined {
   const match = /([\d.]+)\s*([kKMGT]?B)/.exec(text);
   return match ? Math.round(Number.parseFloat(match[1]) * UNITS[match[2].toUpperCase()]) : undefined;
 }
 
-export function ageInDays(created = '', now = Date.now()): number | undefined {
+function ageInDays(created = '', now = Date.now()): number | undefined {
   const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?/.exec(created.trim());
   if (!match) return undefined;
   const zone = !match[3] || match[3] === 'Z' ? 'Z' : match[3].replace(/^([+-]\d{2})(\d{2})$/, '$1:$2');

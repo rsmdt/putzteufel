@@ -19,14 +19,14 @@ export interface Run {
   bg?: string;
 }
 
-export interface Arc {
+interface Arc {
   node: MapNode;
   depth: number;
   start: number;
   end: number;
 }
 
-export interface Rect {
+interface Rect {
   node: MapNode;
   x: number;
   y: number;
@@ -48,7 +48,7 @@ export const BLOCK_GLYPHS: MapGlyphs = { top: '▀', bottom: '▄', edgeRight: '
 const MIN_ARC = 0.012;
 const TAU = Math.PI * 2;
 
-export function hsl(h: number, s: number, l: number): string {
+function hsl(h: number, s: number, l: number): string {
   const a = s * Math.min(l, 1 - l);
   const channel = (n: number) => {
     const k = (n + h / 30) % 12;
@@ -59,7 +59,7 @@ export function hsl(h: number, s: number, l: number): string {
   return `#${channel(0)}${channel(8)}${channel(4)}`;
 }
 
-export function shade(hex: string, factor: number): string {
+function shade(hex: string, factor: number): string {
   const n = Number.parseInt(hex.slice(1), 16);
   const mix = (c: number) => Math.round(factor >= 0 ? c + (255 - c) * factor : c * (1 + factor));
   return `#${[n >> 16, (n >> 8) & 255, n & 255].map((c) => mix(c).toString(16).padStart(2, '0')).join('')}`;
@@ -96,7 +96,7 @@ export function sunburstArcs(root: MapNode, maxDepth: number): Arc[] {
   return arcs;
 }
 
-export interface SunburstGeometry {
+interface SunburstGeometry {
   cx: number;
   cy: number;
   hole: number;

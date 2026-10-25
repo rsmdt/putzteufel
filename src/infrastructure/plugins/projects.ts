@@ -7,7 +7,7 @@ import { execFileAsync, limiter, which } from '../shell.ts';
 import { exists } from '../fs.ts';
 import { type Owner, type ProjectRule } from '../../plugins/api.ts';
 
-export type OwnedRule = ProjectRule & Owner;
+type OwnedRule = ProjectRule & Owner;
 
 const NEVER_ENTER = new Set(['.git', '.hg', '.svn']);
 const UNGUARDED = new Set(['node_modules', '__pycache__', '__pypackages__']);

@@ -1,6 +1,6 @@
 import { Overlay } from '../../components/Overlay.tsx';
 import { useLook } from '../../look.ts';
-import { THEMES, type Theme } from '../../theme.ts';
+import { THEMES } from '../../theme.ts';
 import { type Screen } from './shared.tsx';
 
 export function ThemeDialog({ screen, cursor }: { screen: Screen; cursor: number }) {

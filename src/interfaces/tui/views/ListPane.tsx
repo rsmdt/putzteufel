@@ -82,7 +82,7 @@ function RowLine({ row, active, young, shared, width, color, highlight }: RowPro
   );
 }
 
-export interface ListPaneProps {
+interface ListPaneProps {
   rows: Row[];
   cursor: number;
   offset: number;

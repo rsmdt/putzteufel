@@ -1,6 +1,6 @@
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { type Emit, type Plugin, type ScanContext, type Target, type TargetDraft } from '../../domain/types.ts';
+import { type Emit, type Plugin, type ScanContext, type Target } from '../../domain/types.ts';
 import { measure } from '../measure.ts';
 import { expandHome, matchesAny, wildcard } from '../../domain/paths.ts';
 import { exists } from '../fs.ts';

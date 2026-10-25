@@ -9,7 +9,7 @@ export type MapMode = 'sunburst' | 'treemap' | 'off';
 
 export const MAP_MIN_WIDTH = 90;
 
-export interface MapPaneProps {
+interface MapPaneProps {
   mode: Exclude<MapMode, 'off'>;
   root: MapNode;
   treemapFocus: MapNode;

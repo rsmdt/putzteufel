@@ -3,7 +3,7 @@ import { type Plugin, type ScanContext, type Target } from '../../../domain/type
 import { scanAll } from '../../../application/scan.ts';
 import type { Estimate } from '../../../domain/types.ts';
 
-export interface ScanState {
+interface ScanState {
   targets: React.RefObject<Target[]>;
   version: number;
   bump: () => void;
@@ -12,7 +12,7 @@ export interface ScanState {
   abort: () => void;
 }
 
-export interface ScanOptions {
+interface ScanOptions {
   estimates?: Map<string, Estimate>;
   onScanned?: (targets: Target[]) => void;
 }

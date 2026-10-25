@@ -3,12 +3,12 @@ import { type Operation } from '../../../infrastructure/oplog.ts';
 import { type Decision, type RunPlan, type Step, planSteps } from '../../../domain/run-plan.ts';
 import { type RunResult, runClean } from '../../../application/clean.ts';
 
-export interface Failure {
+interface Failure {
   step: Step;
   error: string;
 }
 
-export interface CleanRun {
+interface CleanRun {
   steps: Step[];
   finishedOrder: string[];
   failure?: Failure;

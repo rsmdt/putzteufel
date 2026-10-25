@@ -9,7 +9,7 @@ const ITEM_KEYS = ['name', 'description', 'paths', 'exclude', 'list', 'clean', '
 const DEF_KEYS = ['name', 'group', 'description', 'items', 'projects'];
 const LIST_KEYS = ['markers', 'dirs', 'contains', 'requires', 'paths', 'exclude', 'sizePaths', 'roots', 'disable'];
 
-export class ConfigError extends Error {}
+class ConfigError extends Error {}
 
 function checkStrings(value: unknown, keys: string[], what: string): void {
   if (value === undefined) return;
@@ -42,14 +42,14 @@ export function checkShape(raw: Record<string, unknown>, allowed: string[], what
   }
 }
 
-export function validateRule(raw: Record<string, unknown>, what = `project rule "${raw?.name}"`): ProjectRule {
+function validateRule(raw: Record<string, unknown>, what = `project rule "${raw?.name}"`): ProjectRule {
   if (typeof raw?.name !== 'string' || !raw.name) throw new ConfigError(`${what.replace(/ "undefined"$/, '')} needs a "name"`);
   checkShape(raw, RULE_KEYS, what);
   if (!(raw.dirs as string[] | undefined)?.length && !(raw.contains as string[] | undefined)?.length) throw new ConfigError(`${what} needs "dirs" or "contains"`);
   return raw as unknown as ProjectRule;
 }
 
-export function validateItem(raw: Record<string, unknown>, what: string): ItemSpec {
+function validateItem(raw: Record<string, unknown>, what: string): ItemSpec {
   if (typeof raw?.name !== 'string' || !raw.name) throw new ConfigError(`${what} needs a "name"`);
   checkShape(raw, ITEM_KEYS, what);
   if ('scan' in raw && typeof raw.scan !== 'function') throw new ConfigError(`${what}: "scan" must be a function returning targets`);

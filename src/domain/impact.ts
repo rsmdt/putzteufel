@@ -1,6 +1,6 @@
 import { type Impact, type Target } from './types.ts';
 
-export interface ImpactInfo {
+interface ImpactInfo {
   tag: string;
   color: string;
   meaning: string;

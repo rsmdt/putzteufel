@@ -73,7 +73,7 @@ export function installChoice(value: string): InstallChoice {
   return value.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-export interface FailurePolicy {
+interface FailurePolicy {
   decide: (attempt: number) => Decision;
 }
 

@@ -1,6 +1,6 @@
 export const SECTIONS = ['Languages', 'Platforms', 'Apps', 'Custom'] as const;
 
-export type Section = (typeof SECTIONS)[number];
+type Section = (typeof SECTIONS)[number];
 
 export const GROUPS = {
   javascript: 'JavaScript',

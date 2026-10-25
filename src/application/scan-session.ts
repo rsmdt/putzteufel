@@ -3,7 +3,7 @@ import { loadEstimates, saveEstimates } from '../infrastructure/store/estimates.
 import { type Target } from '../domain/types.ts';
 import { scanAll } from './scan.ts';
 
-export interface ScanHooks {
+interface ScanHooks {
   onFound?: (t: Target) => void;
   onMeasured?: (t: Target) => void;
   onWarning: (message: string) => void;

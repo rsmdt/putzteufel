@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { ICONS, type Icons, THEMES, type Theme } from './theme.ts';
 
-export interface Look {
+interface Look {
   theme: Theme;
   icons: Icons;
 }

@@ -3,7 +3,7 @@ import { type Context, footerHints } from '../keys.ts';
 import { fitHints, HINT_SEPARATOR } from '../hints.ts';
 import { useLook } from '../look.ts';
 
-export interface OverlayProps {
+interface OverlayProps {
   title: string;
   context: Context;
   screen: { width: number; height: number };
@@ -14,7 +14,7 @@ export interface OverlayProps {
   children?: ReactNode;
 }
 
-export function overlaySize(screen: { width: number; height: number }, width: number, height: number) {
+function overlaySize(screen: { width: number; height: number }, width: number, height: number) {
   return { width: Math.min(width, screen.width - 2), height: Math.min(height, screen.height - 2) };
 }
 

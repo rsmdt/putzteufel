@@ -12,7 +12,7 @@ import { UsageError, type Values, selector, sessionOptions } from '../args.ts';
 import { type Output } from '../output.ts';
 import { scanSession } from '../../../application/scan-session.ts';
 
-export function describeTarget(t: Target, cover?: Target): string {
+function describeTarget(t: Target, cover?: Target): string {
   const age = t.ageDays === undefined ? '' : `${Math.floor(t.ageDays)}d`;
   const paths = t.paths.filter((p) => p !== t.label).map((p) => (p.startsWith(t.label + path.sep) ? path.relative(t.label, p) : tildify(p)));
   const via = t.commands.length ? `  via: ${t.commands[0].run}` : t.tool && !t.tool.installed && t.tool.clean.length ? `  ${t.tool.bin} ${t.tool.broken ? `failed (${t.tool.broken})` : 'not installed'}: deleted directly${t.tool.install && !t.tool.broken ? ` (or ${t.tool.install})` : ''}` : '';

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export const LOADING_DELAY = 500;
+const LOADING_DELAY = 500;
 
 export function useDelayed(active: boolean, delay = LOADING_DELAY): boolean {
   const [shown, setShown] = useState(false);

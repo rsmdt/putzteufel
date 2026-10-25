@@ -2,7 +2,7 @@ import type { BoxRenderable, MouseEvent } from '@opentui/core';
 import type { ReactNode, Ref } from 'react';
 import { useLook } from '../look.ts';
 
-export interface FrameProps {
+interface FrameProps {
   title?: string;
   bottomTitle?: string;
   focused?: boolean;

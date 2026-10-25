@@ -11,7 +11,7 @@ import { type Values, installChoice, selector, sessionOptions } from '../args.ts
 import { type Output } from '../output.ts';
 import { scanSession } from '../../../application/scan-session.ts';
 
-export interface Planned {
+interface Planned {
   session: Session;
   targets: Target[];
   plan: Plan;

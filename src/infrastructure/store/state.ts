@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-export interface UiState {
+interface UiState {
   welcomed?: boolean;
   theme?: string;
 }

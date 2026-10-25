@@ -49,7 +49,7 @@ export function legendLines(recentDays: number, theme: Theme): Line[] {
   ];
 }
 
-export interface ReviewOptions {
+interface ReviewOptions {
   useTrash: boolean;
   trashAvailable: boolean;
   install: Set<string>;
@@ -59,7 +59,7 @@ export interface ReviewOptions {
   exact?: Freed | 'pending';
 }
 
-export function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
+function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
   const color = { info: theme.text, warn: theme.warn, error: theme.error };
   return planNotes(selected, options, options.install).map((n) => ({ text: n.text, fg: color[n.level], bold: n.level === 'error' }));
 }
