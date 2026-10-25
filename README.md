@@ -56,41 +56,7 @@ putzteufel deletes the folders itself.
 
 | Name | Group | Description |
 |---|---|---|
-| `bun` | JavaScript | global package cache |
-| `corepack` | JavaScript | downloaded package manager versions |
-| `electron` | JavaScript | downloaded Electron binaries |
-| `node` | JavaScript | `node_modules`, framework caches and build output in projects |
-| `node-gyp` | JavaScript | downloaded Node headers |
-| `puppeteer` | JavaScript | downloaded browsers |
-| `react-native` | JavaScript | native Android and iOS builds in projects |
-| `tsc` | JavaScript | TypeScript build info cache |
-| `python` | Python | `__pycache__`, virtual environments and build output in projects |
-| `pixi` | Python | project environments |
-| `torch` | Python | PyTorch Hub downloads |
-| `mvn` | Java | local repository and `target` folders |
-| `gradle` | Java | caches, wrapper distributions and build folders |
-| `sbt` | Java | `target` folders |
-| `bundle` | Ruby | `vendor/bundle` in projects |
-| `cabal` | Haskell | `dist-newstyle` folders |
-| `stack` | Haskell | `.stack-work` folders |
-| `mix` | Elixir | `_build` and `deps` folders |
-| `flutter` | Dart | build folders |
-| `zig` | Zig | cache and build output |
-| `cmake` | C/C++ | build folders |
-| `swift` | Apple | SwiftPM cache and `.build` folders |
-| `carthage` | Apple | dependency cache |
-| `xcodebuild` | Apple | DerivedData, previews, archives, device support and simulator caches |
-| `terraform` | Terraform | `.terraform` folders |
-| `code` | Editors | caches of VS Code, Insiders, Cursor, Windsurf and VSCodium |
-| `idea` | Editors | caches and logs of JetBrains IDEs |
-| `unity` | Game engines | `Library`, `Temp` and build folders in projects |
-| `unreal` | Game engines | intermediate files, saved data and builds in projects |
-| `godot` | Game engines | `.godot` folders |
-| `~/.cache` | macOS | caches of command-line tools |
-| `~/Library/Caches` | macOS | app caches |
-| `~/Library/Logs` | macOS | app logs |
-| `~/Downloads` | macOS | disk images and installer packages |
-| `~/.Trash` | macOS | the Trash |
+| `putzteufel` | all | dependency and build folders in projects (`node_modules`, virtual environments, `target`, `build`), download caches of tools without a cleanup command, Xcode DerivedData, editor caches, `~/.cache`, `~/Library/Caches`, old installers and the Trash |
 
 ### Vendored
 
