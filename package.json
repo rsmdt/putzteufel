@@ -4,6 +4,23 @@
   "description": "Fullscreen TUI that finds and removes regenerable dev clutter, using each tool's own cleanup command",
   "license": "GPL-3.0-or-later",
   "author": "Rudolf Schmidt",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rsmdt/putzteufel.git"
+  },
+  "homepage": "https://github.com/rsmdt/putzteufel#readme",
+  "bugs": {
+    "url": "https://github.com/rsmdt/putzteufel/issues"
+  },
+  "keywords": [
+    "cleanup",
+    "disk-space",
+    "cache",
+    "node_modules",
+    "docker",
+    "tui",
+    "cli"
+  ],
   "type": "module",
   "bin": {
     "putzteufel": "dist/putzteufel.js"
