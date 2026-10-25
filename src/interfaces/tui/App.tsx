@@ -38,6 +38,7 @@ import { ThemeDialog } from './views/dialogs/Theme.tsx';
 import { MIN_SIZE, TooSmall } from './views/dialogs/TooSmall.tsx';
 import { ToolsDialog } from './views/dialogs/Tools.tsx';
 import { WelcomeDialog } from './views/dialogs/Welcome.tsx';
+import { ActivityDialog } from './views/dialogs/Activity.tsx';
 import { FilesPane } from './views/FilesPane.tsx';
 import { ListPane } from './views/ListPane.tsx';
 import { MAP_MIN_WIDTH, MapPane, type MapMode } from './views/MapPane.tsx';
@@ -417,7 +418,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             { text: `${selected.some((t) => t.estimated || t.size === undefined) ? '≈' : ''}${human(uniqueSize(selected))} to free`, priority: 'normal' },
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
-            ...(scanningShown ? [{ text: 'scanning…', color: theme.accent, priority: 'essential' as const }] : []),
+            ...(scanningShown ? [{ text: `scanning: ${scan.progress.running.length} running, ${scan.progress.waiting} waiting (p)`, color: theme.accent, priority: 'essential' as const }] : []),
             ...(installing ? [{ text: 'installing tools…', color: theme.warn, priority: 'essential' as const }] : []),
             ...(suggestions.length && !installing ? [{ text: `${suggestions.length} tool suggestion${suggestions.length > 1 ? 's' : ''} (i)`, color: theme.warn, priority: 'essential' as const }] : []),
             ...(mapHidden ? [{ text: `map needs ${MAP_MIN_WIDTH}+ columns, has ${width}`, color: theme.muted, priority: 'essential' as const }] : []),
@@ -469,6 +470,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         {overlay === 'review' ? <ReviewDialog screen={screen} lines={reviewText} offset={dialogOffset} /> : null}
         {overlay === 'progress' ? <ProgressDialog screen={screen} steps={run.steps} finishedOrder={run.finishedOrder} failure={run.failure} done={run.done} freed={run.freed} /> : null}
         {overlay === 'help' ? <HelpDialog screen={screen} lines={help} offset={dialogOffset} query={helpQuery} searching={helpSearching} /> : null}
+        {overlay === 'activity' ? <ActivityDialog screen={screen} progress={scan.progress} scanning={scan.scanning} offset={dialogOffset} /> : null}
         {overlay === 'messages' ? <MessagesDialog screen={screen} messages={messages} offset={dialogOffset} /> : null}
         {overlay === 'sort' ? <SortDialog screen={screen} sort={sort} cursor={sortCursor} /> : null}
         {overlay === 'theme' ? <ThemeDialog screen={screen} cursor={Math.max(0, THEMES.findIndex((t) => t.name === themeName))} /> : null}

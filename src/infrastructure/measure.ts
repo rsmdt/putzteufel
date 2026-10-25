@@ -13,6 +13,7 @@ interface Measurement {
   linkedBytes: number;
   files: number;
   newest?: number;
+  partial?: boolean;
 }
 
 export interface Freed {
@@ -24,17 +25,34 @@ type Row = { key: string; bytes: number; links: number; mtime: number };
 
 const STAT = process.platform === 'darwin' ? "stat -f '%d:%i %b %l %m'" : "stat -c '%d:%i %b %h %Y'";
 
-function walk(paths: string[], onRow: (row: Row) => void): Promise<void> {
-  if (!paths.length) return Promise.resolve();
+const WALK_TIMEOUT = Number(process.env.PUTZTEUFEL_WALK_TIMEOUT_MS) || 10 * 60_000;
+
+function walk(paths: string[], onRow: (row: Row) => void, timeout = WALK_TIMEOUT): Promise<boolean> {
+  if (!paths.length) return Promise.resolve(true);
   return new Promise((resolve) => {
-    const child = spawn('sh', ['-c', `find "$@" -type f -print0 2>/dev/null | xargs -0 ${STAT} 2>/dev/null`, 'sh', ...paths], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = spawn('sh', ['-c', `find "$@" -type f -print0 2>/dev/null | xargs -0 ${STAT} 2>/dev/null`, 'sh', ...paths], { stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+    let complete = true;
+    const timer = setTimeout(() => {
+      complete = false;
+      try {
+        process.kill(-child.pid!, 'SIGTERM');
+      } catch {
+        child.kill('SIGTERM');
+      }
+    }, timeout);
     const lines = createInterface({ input: child.stdout });
     lines.on('line', (line) => {
       const [key, blocks, links, mtime] = line.split(' ');
       if (key && blocks) onRow({ key, bytes: Number(blocks) * 512, links: Number(links), mtime: Number(mtime) * 1000 });
     });
-    child.on('close', () => resolve());
-    child.on('error', () => resolve());
+    child.on('close', () => {
+      clearTimeout(timer);
+      resolve(complete);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(complete);
+    });
   });
 }
 
@@ -59,7 +77,7 @@ function measureOne(p: string): Promise<Measurement> {
         result.size += row.bytes;
         result.files++;
         if (!result.newest || row.mtime > result.newest) result.newest = row.mtime;
-      }).then(() => result),
+      }).then((complete) => ({ ...result, partial: !complete || undefined })),
     );
   }
   return measured.get(p)!;
@@ -69,7 +87,7 @@ export async function measure(paths: string[]): Promise<Measurement> {
   const present = (await Promise.all([...new Set(paths)].map(async (p) => ((await exists(p)) ? p : null)))).filter((p): p is string => p !== null);
   const parts = await Promise.all(present.map(measureOne));
   return parts.reduce<Measurement>(
-    (all, m) => ({ size: all.size + m.size, linkedBytes: all.linkedBytes + m.linkedBytes, files: all.files + m.files, newest: Math.max(all.newest ?? 0, m.newest ?? 0) || undefined }),
+    (all, m) => ({ size: all.size + m.size, linkedBytes: all.linkedBytes + m.linkedBytes, files: all.files + m.files, newest: Math.max(all.newest ?? 0, m.newest ?? 0) || undefined, partial: all.partial || m.partial }),
     { size: 0, linkedBytes: 0, files: 0 },
   );
 }

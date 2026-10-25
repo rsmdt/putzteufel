@@ -12,6 +12,7 @@ import { SORT_KEYS, type SortKey, sortBy, targetView } from '../../../domain/sor
 import { UsageError, type Values, selector, sessionOptions } from '../args.ts';
 import { type Output } from '../output.ts';
 import { scanSession } from '../../../application/scan-session.ts';
+import { progressReporter } from '../progress.ts';
 
 function describeTarget(t: Target, cover?: Target): string {
   const age = t.ageDays === undefined ? '' : `${Math.floor(t.ageDays)}d`;
@@ -40,6 +41,7 @@ export async function scanCommand(values: Values, roots: string[], out: Output):
       }
     },
     onWarning: out.warn,
+    onProgress: progressReporter(out, values.verbose),
   });
   const chosen = new Set(select(targets, selector(values, minAge), session.ctx.recentDays).map((t) => t.id));
   targets.forEach((t) => (t.selected = chosen.has(t.id)));

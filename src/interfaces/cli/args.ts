@@ -13,6 +13,7 @@ const text = (fallback?: string) => ({ type: 'string' as const, ...(fallback ===
 export const OPTIONS = {
   config: list(),
   json: flag(),
+  verbose: flag(),
   'older-than': text(),
   exclude: list(),
   'no-projects': flag(),

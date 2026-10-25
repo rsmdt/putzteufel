@@ -32,6 +32,7 @@ Keys (`?` shows all of them, searchable with `/`, built from the same list the f
 | `t` | delete vs. Trash mode |
 | `d` | review and clean |
 | `w` | message log |
+| `p` | scan progress: every plugin still looking for items and every folder still being measured, with how long each has run |
 | `T` | theme (dark, light, high contrast; previews live, saved on enter) |
 | `r`, `q` | rescan, quit |
 
@@ -76,13 +77,13 @@ putzteufel plugins                         # plugins, their tools, config errors
 putzteufel history                         # cleanups recorded in the operations log
 ```
 
-Selection works the same for `scan` (the `x` column), `plan` and `clean`: `--key`, `--exclude-key`, `--plugin`, `--item Plugin/Item`, `--group`, `--impact`, `--filter` (fuzzy), `--all`, `--default` (the TUI's default selection, also used when nothing else is given) and `--older-than DAYS`. `--only PLUGIN` scans just those plugins, which is much faster. `clean` without `--yes` prints the plan and exits with code 3; exit codes are 0 ok, 1 error, 2 some steps failed. Native tools are only installed with `--install-tools`.
+Selection works the same for `scan` (the `x` column), `plan` and `clean`: `--key`, `--exclude-key`, `--plugin`, `--item Plugin/Item`, `--group`, `--impact`, `--filter` (fuzzy), `--all`, `--default` (the TUI's default selection, also used when nothing else is given) and `--older-than DAYS`. `--only PLUGIN` scans just those plugins, which is much faster. `--verbose` prints each plugin scan and folder measurement to stderr as it starts and finishes, with its time, which shows what a slow scan is waiting for. A folder walk is stopped after 10 minutes (`PUTZTEUFEL_WALK_TIMEOUT_MS` changes that); its size is then reported as a lower bound with a warning. `clean` without `--yes` prints the plan and exits with code 3; exit codes are 0 ok, 1 error, 2 some steps failed. Native tools are only installed with `--install-tools`.
 
 With `--json`, every command writes newline-delimited JSON, one event per line, each with `"event"` and `"schema": 1`:
 
 | command | events |
 |---|---|
-| `scan` | `found` (an item, before measuring, possibly with `estimated` sizes from the last run), `measured`, `suggestion` (a tool to install: `bin`, `install`, `uninstall`, `clean`, `size`, `items` keys, `reason`), `warning`, `config-error`, `done` (`count`, `size`, `selectedSize`, `selected` keys, all `targets`) |
+| `scan` | `progress` (every 2 s: `found`, `measured`, `waiting`, and `running` with `kind`, `label`, `detail`, `seconds`), `found` (an item, before measuring, possibly with `estimated` sizes from the last run), `measured`, `suggestion` (a tool to install: `bin`, `install`, `uninstall`, `clean`, `size`, `items` keys, `reason`), `warning`, `config-error`, `done` (`count`, `size`, `selectedSize`, `selected` keys, all `targets`) |
 | `files` | `files` (`target`, `dir`, `entries` with `name`, `path`, `size`, `isDir`, `mtimeMs`, and `owners`: keys of other items that touch the entry) |
 | `plan` | `plan` (`plan` with `size`, `notes`, `hooks`, `install`, `uninstall`, `items`; `exact` with `total` bytes on disk and `freed`, counting hard-linked files once) |
 | `clean` | `step` (hooks, installs, items and uninstalls with `state` pending/running/done/failed/skipped), `failure` (the `decision` taken), `done` (`freed`, `cleaned` keys, `aborted`, `failed`); without `--yes`: `confirmation-required` |

@@ -38,6 +38,7 @@ export interface Target {
   linkedBytes?: number;
   ageDays?: number;
   estimated?: boolean;
+  partial?: boolean;
   touched?: boolean;
   project?: string;
   fallback?: boolean;
@@ -52,12 +53,29 @@ export interface ScanContext {
   olderThan: number;
   recentDays: number;
   signal: AbortSignal;
+  note?: (detail: string) => void;
+}
+
+export interface Activity {
+  id: string;
+  kind: 'scan' | 'measure';
+  label: string;
+  detail?: string;
+  startedAt: number;
+}
+
+export interface ScanProgress {
+  running: Activity[];
+  found: number;
+  measured: number;
+  waiting: number;
 }
 
 export type Emit = (draft: TargetDraft) => void;
 
 export interface Plugin {
   name: string;
+  item?: string;
   group: string;
   description?: string;
   fallback?: boolean;

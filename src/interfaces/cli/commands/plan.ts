@@ -9,6 +9,7 @@ import { tildify } from '../../../domain/paths.ts';
 import { trashAvailable } from '../../../infrastructure/remove.ts';
 import { type Values, installChoice, selector, sessionOptions } from '../args.ts';
 import { type Output } from '../output.ts';
+import { progressReporter } from '../progress.ts';
 import { scanSession } from '../../../application/scan-session.ts';
 
 interface Planned {
@@ -20,7 +21,7 @@ interface Planned {
 export async function planFrom(values: Values, roots: string[], out: Output): Promise<Planned> {
   const session = await openSession(sessionOptions(values, roots));
   session.config.errors.forEach((e) => out.warn(`config: ${e}`));
-  const targets = await scanSession(session, { onWarning: out.warn });
+  const targets = await scanSession(session, { onWarning: out.warn, onProgress: progressReporter(out, values.verbose) });
   const selected = select(targets, selector(values, session.ctx.olderThan), session.ctx.recentDays);
   const plan = makePlan(selected, {
     useTrash: values.trash,

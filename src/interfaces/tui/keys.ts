@@ -9,6 +9,7 @@ export type Context =
   | 'preview'
   | 'tools'
   | 'suggest'
+  | 'activity'
   | 'review'
   | 'progress'
   | 'failure'
@@ -60,7 +61,8 @@ export type Action =
   | 'skipAll'
   | 'abort'
   | 'dismiss'
-  | 'install';
+  | 'install'
+  | 'activity';
 
 interface Binding {
   action: Action;
@@ -74,7 +76,7 @@ interface Binding {
 }
 
 const MAIN: Context[] = ['list', 'files', 'map', 'preview'];
-const SCROLL: Context[] = ['preview', 'review', 'help', 'messages'];
+const SCROLL: Context[] = ['preview', 'review', 'help', 'messages', 'activity'];
 
 export const BINDINGS: Binding[] = [
   { action: 'down', keys: ['down', 'j'], label: 'move', section: 'Move', contexts: ['list', 'files', 'tools', 'suggest', 'sort', 'theme'], display: '↑↓' },
@@ -107,6 +109,8 @@ export const BINDINGS: Binding[] = [
   { action: 'sort', keys: ['o'], label: 'sort', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'reverse', keys: ['R'], label: 'reverse sort', section: 'Views', contexts: [...MAIN, 'sort'], footer: false },
   { action: 'map', keys: ['m'], label: 'map', section: 'Views', contexts: MAIN, priority: 'optional' },
+  { action: 'activity', keys: ['p'], label: 'scan progress', section: 'Views', contexts: MAIN, priority: 'optional' },
+  { action: 'cancel', keys: ['escape', 'p', 'q'], label: 'close', section: 'Scan progress', contexts: ['activity'], display: 'esc', priority: 'essential' },
   { action: 'messages', keys: ['w'], label: 'messages', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'theme', keys: ['T'], label: 'theme', section: 'Views', contexts: MAIN, priority: 'optional', footer: false },
   { action: 'install', keys: ['i'], label: 'tools', section: 'Clean', contexts: MAIN, priority: 'optional' },

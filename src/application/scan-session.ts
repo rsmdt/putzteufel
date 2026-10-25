@@ -1,12 +1,13 @@
 import { type Session } from './session.ts';
 import { loadEstimates, saveEstimates } from '../infrastructure/store/estimates.ts';
-import { type Target } from '../domain/types.ts';
+import { type ScanProgress, type Target } from '../domain/types.ts';
 import { scanAll } from './scan.ts';
 
 interface ScanHooks {
   onFound?: (t: Target) => void;
   onMeasured?: (t: Target) => void;
   onWarning: (message: string) => void;
+  onProgress?: (progress: ScanProgress) => void;
 }
 
 export async function scanSession(session: Session, hooks: ScanHooks): Promise<Target[]> {
@@ -20,7 +21,7 @@ export async function scanSession(session: Session, hooks: ScanHooks): Promise<T
       hooks.onMeasured?.(t);
     },
     hooks.onWarning,
-    { estimates, onFound: hooks.onFound },
+    { estimates, onFound: hooks.onFound, onProgress: hooks.onProgress },
   );
   await saveEstimates(found);
   return found;

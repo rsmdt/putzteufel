@@ -1,4 +1,6 @@
-import { type Estimate, type Plugin, type ScanContext, type Target, type TargetDraft } from '../domain/types.ts';
+import { type Activity, type Estimate, type Plugin, type ScanContext, type ScanProgress, type Target, type TargetDraft } from '../domain/types.ts';
+import { human } from '../domain/format.ts';
+import { tildify } from '../domain/paths.ts';
 import { forgetSizes } from '../infrastructure/measure.ts';
 import { limiter } from '../infrastructure/shell.ts';
 import { preselect } from '../domain/impact.ts';
@@ -8,6 +10,7 @@ let nextId = 1;
 
 interface ScanExtras {
   onFound?: (t: Target) => void;
+  onProgress?: (progress: ScanProgress) => void;
   estimates?: Map<string, Estimate>;
 }
 
@@ -23,6 +26,18 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
   forgetSizes();
   const measureLimit = limiter(8);
   const measuring: Promise<void>[] = [];
+  const running = new Map<string, Activity>();
+  const counts = { found: 0, measured: 0 };
+  const report = () => extras.onProgress?.({ running: [...running.values()], found: counts.found, measured: counts.measured, waiting: counts.found - counts.measured - [...running.values()].filter((a) => a.kind === 'measure').length });
+  const begin = (activity: Omit<Activity, 'startedAt'>) => {
+    running.set(activity.id, { ...activity, startedAt: Date.now() });
+    report();
+  };
+  const end = (id: string) => {
+    running.delete(id);
+    report();
+  };
+  const labelOf = (plugin: Plugin) => (plugin.item && plugin.item !== plugin.name ? `${plugin.name} / ${plugin.item}` : plugin.name);
 
   const accept = (plugin: Plugin) => (draft: TargetDraft) => {
     if (ctx.signal.aborted) return;
@@ -45,6 +60,7 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
       onError(`${plugin.name}: "${target.label}" lists no affected files, skipped`);
       return;
     }
+    counts.found++;
     if (extras.onFound) {
       applyEstimate(target, extras.estimates?.get(target.key));
       target.selected = preselect(target, ctx.recentDays, ctx.olderThan);
@@ -53,7 +69,13 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
     measuring.push(
       measureLimit(async () => {
         if (ctx.signal.aborted) return;
-        await plugin.measure(target);
+        const id = `measure:${target.id}`;
+        begin({ id, kind: 'measure', label: `${target.plugin}: ${tildify(target.label)}`, detail: target.paths.map(tildify).join(', ') });
+        await plugin.measure(target).finally(() => {
+          counts.measured++;
+          end(id);
+        });
+        if (target.partial) onError(`${target.plugin}: measuring ${tildify(target.label)} took too long and was stopped; it is at least ${human(target.size)}`);
         target.estimated = undefined;
         if (!target.touched) target.selected = preselect(target, ctx.recentDays, ctx.olderThan);
         onTarget(target);
@@ -66,7 +88,21 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
     for (const plugin of plugins.filter((p) => Boolean(p.fallback) === phase)) {
       if (await plugin.available()) active.push(plugin);
     }
-    await Promise.all(active.map((p) => p.scan(ctx, accept(p)).catch((e: Error) => onError(`${p.name}: ${e.message}`))));
+    await Promise.all(
+      active.map((p, i) => {
+        const id = `scan:${phase ? 'fallback' : 'main'}:${i}`;
+        begin({ id, kind: 'scan', label: labelOf(p) });
+        const note = (detail: string) => {
+          const activity = running.get(id);
+          if (activity) running.set(id, { ...activity, detail });
+          report();
+        };
+        return p
+          .scan({ ...ctx, note }, accept(p))
+          .catch((e: Error) => onError(`${p.name}: ${e.message}`))
+          .finally(() => end(id));
+      }),
+    );
     if (ctx.signal.aborted) return;
   }
   await Promise.all(measuring);

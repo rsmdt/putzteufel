@@ -1,3 +1,4 @@
+import { tildify } from '../../domain/paths.ts';
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { type Emit, type Plugin, type ScanContext, type Target } from '../../domain/types.ts';
@@ -103,7 +104,10 @@ export class ProjectsScanner implements Plugin {
     }
   }
 
+  private visited = 0;
+
   private async visit(dir: string, root: string, ctx: ScanContext, emit: Emit, claimed: Set<string>, queue: string[]): Promise<void> {
+    if (++this.visited % 25 === 0) ctx.note?.(`${this.visited} folders walked, ${queue.length} queued; now in ${tildify(dir)}`);
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
     const files = entries.filter((e) => !e.isDirectory()).map((e) => e.name);
@@ -141,6 +145,7 @@ export class ProjectsScanner implements Plugin {
     const sized = await measure(target.paths);
     target.size = sized.size;
     target.linkedBytes = sized.linkedBytes;
+    target.partial = sized.partial;
     const newest = target.project ? await this.newestSourceMtime(target.project) : 0;
     const fallback = newest || (await lstat(target.paths[0]).then((s) => s.mtimeMs, () => Date.now()));
     target.ageDays = (Date.now() - fallback) / 86_400_000;

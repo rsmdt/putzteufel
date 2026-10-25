@@ -39,7 +39,8 @@ Scanning:
   --no-projects       skip the project scan        --no-caches     skip cache plugins
   --only PLUGIN       scan only these plugins, repeatable (faster, e.g. --only Docker)
   --sort size|age|name, --reverse   order of the scan list (default size)
-  --json              newline-delimited JSON events for scripts and other UIs
+  --json              newline-delimited JSON events for scripts and other UIs (with progress events every 2 s)
+  --verbose           print each plugin scan and folder measurement as it starts and finishes, with its time
   --ascii             (TUI) ASCII glyphs only
   -h, --help
 

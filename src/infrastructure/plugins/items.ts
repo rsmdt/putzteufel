@@ -75,6 +75,7 @@ export class ItemPlugin implements Plugin {
     let output: string | undefined;
     let broken: string | undefined;
     if (spec.list && found) {
+      ctx.note?.(`running: ${spec.list}`);
       output = await shell(spec.list).catch((e: Error & { stderr?: string }) => {
         if (!spec.tool) throw e;
         const lines = (e.stderr || e.message).trim().split('\n').map((l) => l.trim()).filter(Boolean);
@@ -112,6 +113,7 @@ export class ItemPlugin implements Plugin {
     const sized = await measure([...target.paths, ...target.sizePaths]);
     target.size = sized.size;
     target.linkedBytes = sized.linkedBytes;
+    target.partial = sized.partial;
     const { newest } = await measure(target.paths);
     if (newest !== undefined) target.ageDays = (Date.now() - newest) / 86_400_000;
   }

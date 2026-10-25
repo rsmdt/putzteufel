@@ -8,7 +8,7 @@ import type { Browser } from '../state/useBrowse.ts';
 import { THEMES } from '../theme.ts';
 import type { MapMode } from '../views/MapPane.tsx';
 
-export type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'suggest' | 'review' | 'progress';
+export type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'suggest' | 'review' | 'progress' | 'activity';
 export type Focus = 'list' | 'preview' | 'map';
 type Set<T> = (value: T | ((previous: T) => T)) => void;
 
@@ -144,6 +144,7 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       if (c.mapMode === 'treemap' && c.focus === 'map') c.setFocus('list');
     }
     if (action === 'messages') c.openDialog('messages');
+    if (action === 'activity') c.openDialog('activity');
     if (action === 'theme') {
       c.setThemeBefore(c.themeName);
       c.openDialog('theme');
@@ -259,6 +260,9 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       c.setHelpSearching(false);
     },
     messages: (action) => {
+      if (!scrollDialog(action) && action === 'cancel') c.closeDialog();
+    },
+    activity: (action) => {
       if (!scrollDialog(action) && action === 'cancel') c.closeDialog();
     },
     sort: (action) => {
