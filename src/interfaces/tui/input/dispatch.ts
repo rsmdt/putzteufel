@@ -8,7 +8,7 @@ import type { Browser } from '../state/useBrowse.ts';
 import { THEMES } from '../theme.ts';
 import type { MapMode } from '../views/MapPane.tsx';
 
-export type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'review' | 'progress';
+export type Overlay = 'welcome' | 'help' | 'messages' | 'sort' | 'theme' | 'tools' | 'suggest' | 'review' | 'progress';
 export type Focus = 'list' | 'preview' | 'map';
 type Set<T> = (value: T | ((previous: T) => T)) => void;
 
@@ -59,6 +59,9 @@ interface Controls {
   setHelpSearching: (on: boolean) => void;
   setHelpQuery: Set<string>;
   tools: Tool[];
+  suggestedTools: Tool[];
+  openSuggestions: () => void;
+  installNow: () => void;
   toolCursor: number;
   setToolCursor: Set<number>;
   setInstall: Set<globalThis.Set<string>>;
@@ -146,6 +149,7 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       c.openDialog('theme');
     }
     if (action === 'trash') c.toggleTrash();
+    if (action === 'install') c.openSuggestions();
     if (action === 'clean') c.startClean();
     if (action === 'rescan') c.rescan();
     if (action === 'help') c.openHelp();
@@ -196,17 +200,17 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
     common(action);
   };
 
-  const tools = (action: Action) => {
-    const count = c.tools.length;
+  const chooseTools = (list: Tool[], onConfirm: () => void) => (action: Action) => {
+    const count = list.length;
     if (action === 'down') c.setToolCursor((i) => Math.min(count, i + 1));
     if (action === 'up') c.setToolCursor((i) => Math.max(0, i - 1));
     if (action === 'toggle' && c.toolCursor === count) c.setUninstallAfter((u) => !u);
     else if (action === 'toggle') {
-      const bin = c.tools[c.toolCursor].bin;
+      const bin = list[c.toolCursor].bin;
       c.setInstall((s) => (s.has(bin) ? without(s, bin) : new Set(s).add(bin)));
     }
-    if (action === 'all') c.setInstall((s) => (s.size === count ? new Set() : new Set(c.tools.map((t) => t.bin))));
-    if (action === 'confirm') c.openDialog('review');
+    if (action === 'all') c.setInstall((s) => (s.size === count ? new Set() : new Set(list.map((t) => t.bin))));
+    if (action === 'confirm') onConfirm();
     if (action === 'cancel') c.closeDialog();
   };
 
@@ -233,7 +237,8 @@ export function createDispatch(c: Controls): (context: Context, action: Action) 
       if (action === 'cancel') c.setFilter('');
       c.setFiltering(false);
     },
-    tools,
+    tools: chooseTools(c.tools, () => c.openDialog('review')),
+    suggest: chooseTools(c.suggestedTools, c.installNow),
     review: (action) => {
       if (scrollDialog(action)) return;
       if (action === 'confirm') c.runCleanup();

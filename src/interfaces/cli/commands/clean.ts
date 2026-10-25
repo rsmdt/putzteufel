@@ -7,7 +7,7 @@ import { type Values, failurePolicy } from '../args.ts';
 import { type Output } from '../output.ts';
 import { planFrom, printPlan } from './plan.ts';
 
-const NEEDS_CONFIRMATION = 3;
+export const NEEDS_CONFIRMATION = 3;
 const SOME_FAILED = 2;
 
 export async function cleanCommand(values: Values, roots: string[], out: Output): Promise<number> {

@@ -8,6 +8,7 @@ export type Context =
   | 'map'
   | 'preview'
   | 'tools'
+  | 'suggest'
   | 'review'
   | 'progress'
   | 'failure'
@@ -58,7 +59,8 @@ export type Action =
   | 'skip'
   | 'skipAll'
   | 'abort'
-  | 'dismiss';
+  | 'dismiss'
+  | 'install';
 
 interface Binding {
   action: Action;
@@ -75,8 +77,8 @@ const MAIN: Context[] = ['list', 'files', 'map', 'preview'];
 const SCROLL: Context[] = ['preview', 'review', 'help', 'messages'];
 
 export const BINDINGS: Binding[] = [
-  { action: 'down', keys: ['down', 'j'], label: 'move', section: 'Move', contexts: ['list', 'files', 'tools', 'sort', 'theme'], display: '↑↓' },
-  { action: 'up', keys: ['up', 'k'], label: 'move up', section: 'Move', contexts: ['list', 'files', 'tools', 'sort', 'theme'], footer: false },
+  { action: 'down', keys: ['down', 'j'], label: 'move', section: 'Move', contexts: ['list', 'files', 'tools', 'suggest', 'sort', 'theme'], display: '↑↓' },
+  { action: 'up', keys: ['up', 'k'], label: 'move up', section: 'Move', contexts: ['list', 'files', 'tools', 'suggest', 'sort', 'theme'], footer: false },
   { action: 'down', keys: ['down', 'j'], label: 'scroll', section: 'Move', contexts: SCROLL, display: '↑↓' },
   { action: 'up', keys: ['up', 'k'], label: 'scroll up', section: 'Move', contexts: SCROLL, footer: false },
   { action: 'pageDown', keys: ['pagedown'], label: 'page down', section: 'Move', contexts: ['list', 'files', ...SCROLL], footer: false },
@@ -94,8 +96,8 @@ export const BINDINGS: Binding[] = [
   { action: 'next', keys: ['right', 'l'], label: 'next slice', section: 'Map', contexts: ['map'], display: '←→', priority: 'essential' },
   { action: 'parent', keys: ['up', 'k'], label: 'out', section: 'Map', contexts: ['map'], display: '↑' },
   { action: 'open', keys: ['down', 'j', 'return'], label: 'in', section: 'Map', contexts: ['map'], display: '↓' },
-  { action: 'toggle', keys: ['space'], label: 'toggle', section: 'Select', contexts: [...MAIN, 'tools'], priority: 'essential' },
-  { action: 'all', keys: ['a'], label: 'all', section: 'Select', contexts: ['list', 'tools'], priority: 'optional' },
+  { action: 'toggle', keys: ['space'], label: 'toggle', section: 'Select', contexts: [...MAIN, 'tools', 'suggest'], priority: 'essential' },
+  { action: 'all', keys: ['a'], label: 'all', section: 'Select', contexts: ['list', 'tools', 'suggest'], priority: 'optional' },
   { action: 'expandAll', keys: ['e'], label: 'expand all groups', section: 'Select', contexts: ['list'], footer: false },
   { action: 'ageUp', keys: [']'], label: 'age', section: 'Select', contexts: MAIN, display: '[ ]' },
   { action: 'ageDown', keys: ['['], label: 'lower age threshold', section: 'Select', contexts: MAIN, footer: false },
@@ -107,6 +109,9 @@ export const BINDINGS: Binding[] = [
   { action: 'map', keys: ['m'], label: 'map', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'messages', keys: ['w'], label: 'messages', section: 'Views', contexts: MAIN, priority: 'optional' },
   { action: 'theme', keys: ['T'], label: 'theme', section: 'Views', contexts: MAIN, priority: 'optional', footer: false },
+  { action: 'install', keys: ['i'], label: 'tools', section: 'Clean', contexts: MAIN, priority: 'optional' },
+  { action: 'confirm', keys: ['return'], label: 'install now', section: 'Native tools', contexts: ['suggest'], display: 'enter', priority: 'essential' },
+  { action: 'cancel', keys: ['escape', 'n'], label: 'not now', section: 'Native tools', contexts: ['suggest'], display: 'esc', priority: 'essential' },
   { action: 'trash', keys: ['t'], label: 'trash', section: 'Clean', contexts: MAIN, priority: 'optional' },
   { action: 'clean', keys: ['d'], label: 'clean', section: 'Clean', contexts: MAIN, priority: 'essential' },
   { action: 'rescan', keys: ['r'], label: 'rescan', section: 'Clean', contexts: MAIN, priority: 'optional' },
@@ -114,7 +119,6 @@ export const BINDINGS: Binding[] = [
   { action: 'quit', keys: ['q'], label: 'quit', section: 'Views', contexts: MAIN, priority: 'essential' },
   { action: 'confirm', keys: ['return'], label: 'apply', section: 'Filter', contexts: ['filter'], display: 'enter', priority: 'essential' },
   { action: 'cancel', keys: ['escape'], label: 'clear', section: 'Filter', contexts: ['filter'], display: 'esc', priority: 'essential' },
-  { action: 'all', keys: ['a'], label: 'all', section: 'Native tools', contexts: ['tools'], footer: false },
   { action: 'confirm', keys: ['return'], label: 'review the cleanup', section: 'Native tools', contexts: ['tools'], display: 'enter', priority: 'essential' },
   { action: 'cancel', keys: ['escape', 'n'], label: 'cancel', section: 'Native tools', contexts: ['tools'], display: 'esc', priority: 'essential' },
   { action: 'confirm', keys: ['y'], label: 'clean now', section: 'Review', contexts: ['review'], priority: 'essential' },

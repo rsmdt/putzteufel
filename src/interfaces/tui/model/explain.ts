@@ -1,5 +1,5 @@
 import { type Freed } from '../../../infrastructure/measure.ts';
-import { type Hooks, type Target } from '../../../domain/types.ts';
+import { type Hooks, type Target, type Tool } from '../../../domain/types.ts';
 import { IMPACTS, IMPACT_ORDER, isRecent } from '../../../domain/impact.ts';
 import { describeCommand } from '../../../domain/command.ts';
 import { disposalFor } from '../../../domain/disposal.ts';
@@ -57,6 +57,7 @@ interface ReviewOptions {
   hooks: Hooks;
   minAge: number;
   exact?: Freed | 'pending';
+  installedEarlier?: Tool[];
 }
 
 function disposalLines(selected: Target[], options: ReviewOptions, theme: Theme): Line[] {
@@ -88,7 +89,7 @@ export function reviewLines(selected: Target[], options: ReviewOptions, theme: T
   const steps: Line[] = [
     ...(hooks.before ? [`  before hook:  $ ${hooks.before}`] : []),
     ...tools.map((t) => ({ text: `  install:      $ ${t.install}`, fg: theme.warn })),
-    ...(uninstallAfter ? tools.filter((t) => t.uninstall).map((t) => ({ text: `  then remove:  $ ${t.uninstall}  (after cleaning; dependencies brew pulled in stay)`, fg: theme.warn })) : []),
+    ...(uninstallAfter ? [...tools, ...(options.installedEarlier ?? [])].filter((t) => t.uninstall).map((t) => ({ text: `  then remove:  $ ${t.uninstall}  (after cleaning; dependencies brew pulled in stay)`, fg: theme.warn })) : []),
     ...(hooks.after ? [`  after hook:   $ ${hooks.after}`] : []),
   ];
   if (steps.length) lines.push('', 'Run steps:', ...steps);

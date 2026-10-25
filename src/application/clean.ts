@@ -1,13 +1,12 @@
-import { type Decision, type RunPlan, type Step, type StepState, actionFor, planSteps, summarize } from '../domain/run-plan.ts';
+import { type Decision, type RunPlan, type Step, type StepState, actionFor, planSteps, summarize, uninstallList } from '../domain/run-plan.ts';
 import { type Target } from '../domain/types.ts';
 import { type Operation } from '../infrastructure/oplog.ts';
 import { cleanTarget } from '../infrastructure/remove.ts';
 import { describeCommand } from '../domain/command.ts';
-import { forgetWhich, shell, which } from '../infrastructure/shell.ts';
+import { shell } from '../infrastructure/shell.ts';
+import { installTool, uninstallTool } from './tools.ts';
 import { tildify } from '../domain/paths.ts';
 import { coveredIn } from '../domain/overlap.ts';
-
-const INSTALL_TIMEOUT = 30 * 60_000;
 
 interface RunEvents {
   onStep?: (step: Step) => void;
@@ -56,10 +55,10 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
   const installed = new Set<string>();
   for (const tool of plan.install) {
     const id = `install:${tool.bin}`;
-    if (!(await runHook(id, tool.install, INSTALL_TIMEOUT))) continue;
-    forgetWhich();
-    if (await which(tool.bin)) installed.add(tool.bin);
-    else update(id, 'failed', `finished, but ${tool.bin} is still not on PATH`);
+    update(id, 'running');
+    const outcome = await installTool(tool);
+    if (outcome.ok) installed.add(tool.bin);
+    update(id, outcome.ok ? 'done' : 'failed', outcome.error);
   }
 
   const covered = coveredIn(plan.targets);
@@ -119,15 +118,16 @@ export async function runClean(plan: RunPlan, events: RunEvents = {}): Promise<R
   }
 
   if (plan.uninstallAfter) {
-    for (const tool of plan.install.filter((t) => t.uninstall)) {
+    for (const tool of uninstallList(plan)) {
       const id = `uninstall:${tool.bin}`;
-      if (!installed.has(tool.bin)) {
-        update(id, 'skipped', 'was not installed by this run');
+      if (!installed.has(tool.bin) && !plan.installedEarlier?.some((t) => t.bin === tool.bin)) {
+        update(id, 'skipped', 'was not installed by putzteufel');
         continue;
       }
-      await runHook(id, tool.uninstall, INSTALL_TIMEOUT);
+      update(id, 'running');
+      const outcome = await uninstallTool(tool);
+      update(id, outcome.ok ? 'done' : 'failed', outcome.error);
     }
-    forgetWhich();
   }
   await runHook('hook:after', plan.hooks.after);
   return result;

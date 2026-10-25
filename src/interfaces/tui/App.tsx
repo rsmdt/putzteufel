@@ -1,7 +1,7 @@
 import type { KeyEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Hooks, type Plugin, type ScanContext, type Target } from '../../domain/types.ts';
+import { type Hooks, type Plugin, type ScanContext, type Target, type Tool } from '../../domain/types.ts';
 import { type Operation, logOperation } from '../../infrastructure/oplog.ts';
 import { trashAvailable } from '../../infrastructure/remove.ts';
 import { human } from '../../domain/format.ts';
@@ -10,6 +10,8 @@ import { tildify } from '../../domain/paths.ts';
 import { overlapIndex, uniqueSize } from '../../domain/overlap.ts';
 import { type Estimate } from '../../domain/types.ts';
 import { missingTools } from '../../domain/run-plan.ts';
+import { toolSuggestions } from '../../domain/suggest.ts';
+import { installTool } from '../../application/tools.ts';
 import { Footer, HeaderBar, MessageBar, modeColor } from './components/Chrome.tsx';
 import { createDispatch, type Focus, type Overlay } from './input/dispatch.ts';
 import { type Context, keyToken, printable, resolve } from './keys.ts';
@@ -89,6 +91,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const [install, setInstall] = useState(new Set<string>());
   const [uninstallAfter, setUninstallAfter] = useState(true);
   const [toolCursor, setToolCursor] = useState(0);
+  const [installedHere, setInstalledHere] = useState<Tool[]>([]);
+  const [uninstallLater, setUninstallLater] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const announced = useRef(new Set<string>());
   const [dialogOffset, setDialogOffset] = useState(0);
   const [helpQuery, setHelpQuery] = useState('');
   const [helpSearching, setHelpSearching] = useState(false);
@@ -120,6 +126,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   else if (cursor >= offsetRef.current + listRows) offsetRef.current = cursor - listRows + 1;
   const offset = offsetRef.current;
   const selected = targets.filter((t) => t.selected);
+  const suggestions = useMemo(() => toolSuggestions(targets), [scan.version]);
   const descriptions = useMemo(() => new Map(plugins.map((p) => [p.name, p.description ?? ''])), [plugins]);
   const young = (t: Target) => isYounger(t, ctx.recentDays, minAge);
   const shared = (t: Target) => [...new Set(overlap.sharedWith(t).map(ownerLabel))];
@@ -208,11 +215,50 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const runCleanup = () => {
     const targetsToClean = [...selected];
     openDialog('progress');
-    run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), uninstallAfter, hooks, useTrash, trashAvailable: canTrash, minAge: minAgeRef.current }, (result) => {
+    const earlier = uninstallLater ? installedHere : [];
+    run.start({ targets: targetsToClean, install: missingTools(targetsToClean).filter((t) => install.has(t.bin)), installedEarlier: earlier, uninstallAfter, hooks, useTrash, trashAvailable: canTrash, minAge: minAgeRef.current }, (result) => {
       result.cleaned.forEach((id) => cleanedRef.current.add(id));
+      const removed = new Set(result.steps.filter((s) => s.kind === 'uninstall' && s.state === 'done').map((s) => s.id.slice('uninstall:'.length)));
+      setInstalledHere((tools) => tools.filter((t) => !removed.has(t.bin)));
       const failed = result.steps.filter((s) => s.state === 'failed').length;
       say(`Cleaned ${result.cleaned.size} of ${targetsToClean.length} item(s), freed about ${human(result.freed)}${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}.`, failed || result.aborted ? 'warn' : 'info');
     });
+  };
+
+  useEffect(() => {
+    for (const s of suggestions) {
+      if (announced.current.has(s.tool.bin)) continue;
+      announced.current.add(s.tool.bin);
+      say(`Suggested: ${s.reason}. Press i to install it.`);
+    }
+  }, [suggestions]);
+
+  const openSuggestions = () => {
+    if (!suggestions.length) return say(scan.scanning ? 'No tool suggestions yet; the scan is still running.' : 'No tool suggestions: every native tool putzteufel could use is installed or has no install command.');
+    setInstall(new Set(suggestions.map((s) => s.tool.bin)));
+    setToolCursor(0);
+    setUninstallAfter(false);
+    openDialog('suggest');
+  };
+
+  const installNow = async () => {
+    const chosen = suggestions.map((s) => s.tool).filter((t) => install.has(t.bin));
+    setOverlay(null);
+    if (!chosen.length) return;
+    setUninstallLater(uninstallAfter);
+    setInstalling(true);
+    const added: Tool[] = [];
+    for (const tool of chosen) {
+      say(`Installing ${tool.bin}: ${tool.install}`);
+      const outcome = await installTool(tool);
+      if (outcome.ok) added.push(tool);
+      say(outcome.ok ? `Installed ${tool.bin}; its items are rescanned to use it.` : `Could not install ${tool.bin}: ${outcome.error}`, outcome.ok ? 'info' : 'error');
+    }
+    setInstalling(false);
+    setUninstallAfter(true);
+    if (!added.length) return;
+    setInstalledHere((tools) => [...tools, ...added.filter((a) => !tools.some((t) => t.bin === a.bin))]);
+    scan.rescan();
   };
 
   const finishClean = () => {
@@ -287,6 +333,9 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     setHelpSearching,
     setHelpQuery,
     tools: missingTools(selected),
+    suggestedTools: suggestions.map((s) => s.tool),
+    openSuggestions,
+    installNow: () => void installNow(),
     toolCursor,
     setToolCursor,
     setInstall,
@@ -351,7 +400,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
       ? { message: `No item matches “${filter}”.`, hint: { keys: 'esc', label: 'clear the filter' } }
       : { message: 'Nothing to clean here.', detail: [`Scanned ${ctx.roots.map(tildify).join(', ') || 'no folders'} and the known cache locations.`], hint: { keys: 'r', label: 'rescan' } };
 
-  const reviewText = overlay === 'review' ? reviewLines(selected, { useTrash, trashAvailable: canTrash, install, uninstallAfter, hooks, minAge, exact }, theme) : [];
+  const reviewText = overlay === 'review' ? reviewLines(selected, { useTrash, trashAvailable: canTrash, install, uninstallAfter, hooks, minAge, exact, installedEarlier: uninstallLater ? installedHere : [] }, theme) : [];
   const help = overlay === 'help' ? helpLines(helpQuery, legendLines(ctx.recentDays, theme), theme) : [];
 
   return (
@@ -360,7 +409,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <HeaderBar
           context={context}
           width={width}
-          busy={scan.scanning || (overlay === 'progress' && !run.done)}
+          busy={scan.scanning || installing || (overlay === 'progress' && !run.done)}
           segments={[
             { text: 'putzteufel', color: theme.accent, priority: 'optional', bold: true },
             { text: `${targets.length} found`, priority: 'essential' },
@@ -369,6 +418,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
             ...(scanningShown ? [{ text: 'scanning…', color: theme.accent, priority: 'essential' as const }] : []),
+            ...(installing ? [{ text: 'installing tools…', color: theme.warn, priority: 'essential' as const }] : []),
+            ...(suggestions.length && !installing ? [{ text: `${suggestions.length} tool suggestion${suggestions.length > 1 ? 's' : ''} (i)`, color: theme.warn, priority: 'essential' as const }] : []),
             ...(mapHidden ? [{ text: `map needs ${MAP_MIN_WIDTH}+ columns, has ${width}`, color: theme.muted, priority: 'essential' as const }] : []),
           ]}
         />
@@ -413,7 +464,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <MessageBar messages={messages} width={width} />
         <Footer context={baseContext} width={width} prefix={filtering || filter ? `filter: ${filter}${filtering ? '▌' : ''}   ` : ''} />
         {overlay === 'welcome' ? <WelcomeDialog screen={screen} /> : null}
-        {overlay === 'tools' ? <ToolsDialog screen={screen} tools={missingTools(selected)} selected={selected} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
+        {overlay === 'tools' ? <ToolsDialog screen={screen} context="tools" tools={missingTools(selected)} items={selected} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
+        {overlay === 'suggest' ? <ToolsDialog screen={screen} context="suggest" tools={suggestions.map((s) => s.tool)} items={targets} install={install} cursor={toolCursor} uninstallAfter={uninstallAfter} /> : null}
         {overlay === 'review' ? <ReviewDialog screen={screen} lines={reviewText} offset={dialogOffset} /> : null}
         {overlay === 'progress' ? <ProgressDialog screen={screen} steps={run.steps} finishedOrder={run.finishedOrder} failure={run.failure} done={run.done} freed={run.freed} /> : null}
         {overlay === 'help' ? <HelpDialog screen={screen} lines={help} offset={dialogOffset} query={helpQuery} searching={helpSearching} /> : null}

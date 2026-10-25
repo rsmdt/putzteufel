@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { select } from '../../../domain/select.ts';
-import { targetJson } from '../serialize.ts';
+import { suggestionJson, targetJson } from '../serialize.ts';
+import { toolSuggestions } from '../../../domain/suggest.ts';
 import { openSession } from '../../../application/session.ts';
 import { IMPACTS } from '../../../domain/impact.ts';
 import { type Target } from '../../../domain/types.ts';
@@ -27,11 +28,16 @@ export async function scanCommand(values: Values, roots: string[], out: Output):
   const context = (targets: Target[]) => ({ overlap: overlapIndex(targets), recentDays: session.ctx.recentDays, minAge });
   session.config.errors.forEach((e) => out.event('config-error', { message: e }));
   const found: Target[] = [];
+  const suggested = new Set<string>();
   const targets = await scanSession(session, {
     onFound: (t) => out.event('found', { target: targetJson(t, context([t])) }),
     onMeasured: (t) => {
       found.push(t);
       out.event('measured', { target: targetJson(t, context([t])) });
+      for (const s of toolSuggestions(found).filter((x) => !suggested.has(x.tool.bin))) {
+        suggested.add(s.tool.bin);
+        out.event('suggestion', { suggestion: suggestionJson(s) });
+      }
     },
     onWarning: out.warn,
   });
@@ -45,6 +51,7 @@ export async function scanCommand(values: Values, roots: string[], out: Output):
     if (!SORT_KEYS.some((k) => k.key === key)) throw new UsageError(`--sort must be size, age or name; got "${values.sort}"`);
     for (const t of sortBy(targets, { key, reverse: values.reverse }, targetView)) out.line(describeTarget(t, all.overlap.coveredBy(t)));
     out.line(`${human(uniqueSize(targets))} across ${targets.length} items, ${human(uniqueSize(selected))} selected`);
+    for (const s of toolSuggestions(targets)) out.line(`Suggested: ${s.reason}. Install with: putzteufel tools --install ${s.tool.bin} --yes   ($ ${s.tool.install})`);
     session.config.errors.forEach((e) => console.error(`error: ${e}`));
   }
   return 0;

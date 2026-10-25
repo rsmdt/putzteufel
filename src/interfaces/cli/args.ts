@@ -33,6 +33,7 @@ export const OPTIONS = {
   'on-failure': text('skip'),
   yes: flag(),
   dir: text(),
+  install: text(),
   sort: text('size'),
   reverse: flag(),
   limit: text(),

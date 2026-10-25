@@ -6,6 +6,7 @@ import { tildify } from './paths.ts';
 export interface RunPlan {
   targets: Target[];
   install: Tool[];
+  installedEarlier?: Tool[];
   uninstallAfter: boolean;
   hooks: Hooks;
   useTrash: boolean;
@@ -52,6 +53,11 @@ export function summarize(action: Action, disposed: Disposed[], minAge = 0): str
   return parts.join(', ') || 'Nothing left to remove';
 }
 
+export function uninstallList(plan: RunPlan): Tool[] {
+  const all = [...plan.install, ...(plan.installedEarlier ?? [])].filter((t) => t.uninstall);
+  return all.filter((t, i) => all.findIndex((x) => x.bin === t.bin) === i);
+}
+
 export function planSteps(plan: RunPlan): Step[] {
   const steps: Step[] = [];
   const hook = (id: string, label: string, command?: string) => command && steps.push({ id, kind: 'hook', label: `${label}: ${command}`, state: 'pending' });
@@ -67,7 +73,7 @@ export function planSteps(plan: RunPlan): Step[] {
     const last = plan.targets.filter((x) => x.plugin === t.plugin).at(-1);
     if (last === t) hook(`hook:after:${t.plugin}`, `${t.plugin} after hook`, t.hooks?.after);
   }
-  if (plan.uninstallAfter) for (const tool of plan.install.filter((t) => t.uninstall)) steps.push({ id: `uninstall:${tool.bin}`, kind: 'uninstall', label: `uninstall ${tool.bin}: ${tool.uninstall}`, state: 'pending' });
+  if (plan.uninstallAfter) for (const tool of uninstallList(plan)) steps.push({ id: `uninstall:${tool.bin}`, kind: 'uninstall', label: `uninstall ${tool.bin}: ${tool.uninstall}`, state: 'pending' });
   hook('hook:after', 'after hook', plan.hooks.after);
   return steps;
 }

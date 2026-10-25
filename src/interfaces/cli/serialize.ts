@@ -1,3 +1,4 @@
+import type { Suggestion } from '../../domain/suggest.ts';
 import { IMPACTS } from '../../domain/impact.ts';
 import { type Target } from '../../domain/types.ts';
 import { describeCommand } from '../../domain/command.ts';
@@ -66,6 +67,10 @@ export function planJson(plan: Plan) {
       hooks: i.target.hooks ?? null,
     })),
   };
+}
+
+export function suggestionJson(s: Suggestion) {
+  return { bin: s.tool.bin, install: s.tool.install ?? null, uninstall: s.tool.uninstall ?? null, clean: s.tool.clean.map((c) => describeCommand(c)), size: s.size, items: s.targets.map((t) => t.key), reason: s.reason };
 }
 
 export function stepJson(step: Step, targets: Map<number, Target>) {

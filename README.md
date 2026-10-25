@@ -28,6 +28,7 @@ Keys (`?` shows all of them, searchable with `/`, built from the same list the f
 | `[` / `]` | lower or raise the age threshold |
 | `o`, `R` | sort by size, age or name; reverse |
 | `m` | map: sunburst, treemap, hidden |
+| `i` | install suggested native tools now |
 | `t` | delete vs. Trash mode |
 | `d` | review and clean |
 | `w` | message log |
@@ -41,6 +42,8 @@ The disk map follows DaisyDisk: the sunburst shows ecosystems, plugins and items
 Nothing is removed until you press `d`, read the confirmation screen listing every path, command and listed item, and press `y`. Before that, `enter` or `f` on an item opens a file browser with the size of every folder and file inside it; folders open with `enter`, `←` goes back up. An item is always removed as a unit.
 
 Native tools: built-in plugins find their folders even when the tool that owns them is missing (they know each tool's default locations, and ask the tool itself when it is installed). The preview says which command will clean the item, or that the tool is missing and the folders will be deleted directly. When you press `d` and selected items have a missing tool that Homebrew can install, a screen lists those tools, all checked: checked tools are installed with `brew install` and do the cleanup with their own command, unchecked ones fall back to direct deletion. A checkbox at the bottom uninstalls the tools again after the cleanup (`brew uninstall` of that formula only; dependencies brew pulled in stay). The review screen lists every install, uninstall and hook command before you press `y`. If an install fails, that tool's items are skipped, not deleted.
+
+Tool suggestions: while the scan runs, putzteufel proposes the native tools that would clean what it just found better than deleting folders, for example `cargo-cache` for the Cargo registry or `hf` for Hugging Face models. Each suggestion appears once in the message bar, and the header counts them (`2 tool suggestions (i)`). `i` opens a dialog to install the checked ones with `brew` right away; their items are then rescanned and use the tool. A checkbox there uninstalls them again after the next cleanup. Nothing is installed without that confirmation. On the command line, `putzteufel scan` lists the suggestions and `putzteufel tools --install BIN --yes` installs them.
 
 Run order: `settings.hooks.before` (if it fails, nothing runs), installs, then per plugin its `hooks.before`, its items, its `hooks.after`, then uninstalls, then `settings.hooks.after`.
 
@@ -68,6 +71,7 @@ putzteufel files 3f9c2a1b7d04 ~/Code       # the files inside one item (--dir PA
 putzteufel plan --plugin Docker --older-than 30   # what a cleanup would do; nothing is removed
 putzteufel clean --key 3f9c2a1b7d04 --trash --yes
 putzteufel clean --impact regenerates --install-tools all --uninstall-after --on-failure retry:2 --yes
+putzteufel tools --install cargo-cache --yes # install a suggested native tool
 putzteufel plugins                         # plugins, their tools, config errors
 putzteufel history                         # cleanups recorded in the operations log
 ```
@@ -78,10 +82,11 @@ With `--json`, every command writes newline-delimited JSON, one event per line, 
 
 | command | events |
 |---|---|
-| `scan` | `found` (an item, before measuring, possibly with `estimated` sizes from the last run), `measured`, `warning`, `config-error`, `done` (`count`, `size`, `selectedSize`, `selected` keys, all `targets`) |
+| `scan` | `found` (an item, before measuring, possibly with `estimated` sizes from the last run), `measured`, `suggestion` (a tool to install: `bin`, `install`, `uninstall`, `clean`, `size`, `items` keys, `reason`), `warning`, `config-error`, `done` (`count`, `size`, `selectedSize`, `selected` keys, all `targets`) |
 | `files` | `files` (`target`, `dir`, `entries` with `name`, `path`, `size`, `isDir`, `mtimeMs`, and `owners`: keys of other items that touch the entry) |
 | `plan` | `plan` (`plan` with `size`, `notes`, `hooks`, `install`, `uninstall`, `items`; `exact` with `total` bytes on disk and `freed`, counting hard-linked files once) |
 | `clean` | `step` (hooks, installs, items and uninstalls with `state` pending/running/done/failed/skipped), `failure` (the `decision` taken), `done` (`freed`, `cleaned` keys, `aborted`, `failed`); without `--yes`: `confirmation-required` |
+| `tools` | `suggestion`, then `install` (`bin`, `ok`, `error`) per installed tool; without `--yes`: `confirmation-required` |
 | `plugins` | `plugin` (name, group, section, projects, items, tools), `config-error` |
 | `history` | `operation` (one operations log entry) |
 

@@ -5,6 +5,7 @@ import { historyCommand } from './commands/history.ts';
 import { planCommand } from './commands/plan.ts';
 import { pluginsCommand } from './commands/plugins.ts';
 import { scanCommand } from './commands/scan.ts';
+import { toolsCommand } from './commands/tools.ts';
 import { output } from './output.ts';
 
 export const HELP = `putzteufel [ROOTS...]                 fullscreen TUI
@@ -13,6 +14,7 @@ putzteufel files KEY [ROOTS...]       list the files inside one item (--dir PATH
 putzteufel plan [ROOTS...] [select]   show what a cleanup would do, nothing is removed
 putzteufel clean [ROOTS...] [select] --yes
                                       clean the selected items
+putzteufel tools [ROOTS...]           native tools the scan suggests installing; --install all|BIN,BIN --yes installs them
 putzteufel plugins                    list plugins, tools and config errors
 putzteufel history [--limit N]        cleanups recorded in the operations log
 
@@ -43,7 +45,7 @@ Scanning:
 
 Exit codes: 0 ok, 1 error, 2 some cleanup steps failed, 3 clean needs --yes.`;
 
-const COMMANDS = new Set(['scan', 'files', 'plan', 'clean', 'plugins', 'history', 'tui']);
+const COMMANDS = new Set(['scan', 'files', 'plan', 'clean', 'tools', 'plugins', 'history', 'tui']);
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
@@ -59,6 +61,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'files') return await filesCommand(values, rest, out);
     if (command === 'plan') return await planCommand(values, rest, out);
     if (command === 'clean') return await cleanCommand(values, rest, out);
+    if (command === 'tools') return await toolsCommand(values, rest, out);
     if (command === 'plugins') return await pluginsCommand(values, out);
     if (command === 'history') return await historyCommand(values, out);
     const { tuiCommand } = await import('./tui.tsx');

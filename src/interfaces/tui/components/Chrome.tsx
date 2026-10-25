@@ -13,6 +13,7 @@ const MODE_LABELS: Record<Context, string> = {
   map: 'MAP',
   preview: 'PREVIEW',
   tools: 'TOOLS',
+  suggest: 'TOOLS',
   review: 'REVIEW',
   progress: 'CLEANING',
   failure: 'FAILED',
@@ -26,7 +27,7 @@ const MODE_LABELS: Record<Context, string> = {
 };
 
 export function modeColor(context: Context, theme: Theme): string {
-  if (context === 'filter' || context === 'tools') return theme.warn;
+  if (context === 'filter' || context === 'tools' || context === 'suggest') return theme.warn;
   if (context === 'review' || context === 'failure') return theme.error;
   if (context === 'done') return theme.ok;
   if (['help', 'helpSearch', 'messages', 'sort', 'theme', 'welcome'].includes(context)) return theme.muted;
