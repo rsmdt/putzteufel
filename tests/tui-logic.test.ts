@@ -39,7 +39,7 @@ test('a long low-priority hint dropped early does not take a short one with it',
 
 test('fuzzy matching prefers word starts and consecutive letters', () => {
   assert.equal(fuzzyMatch('node_modules', 'xyz'), null);
-  assert.deepEqual(fuzzyMatch('~/Code/web/node_modules', 'nm')?.positions, [11, 16]);
+  assert.deepEqual(fuzzyMatch('/tmp/a/web/node_modules', 'nm')?.positions, [11, 16]);
   const start = fuzzyMatch('bravo', 'bra')!.score;
   const middle = fuzzyMatch('abracadabra', 'bra')!.score;
   assert.ok(start > middle);

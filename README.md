@@ -12,7 +12,6 @@
 
 - [🧹 What is putzteufel?](#-what-is-putzteufel)
 - [🚀 Quick Start](#-quick-start)
-- [📖 How It Works](#-how-it-works)
 - [🧰 Supported Tools](#-supported-tools)
 - [⌨️ Command Line](#️-command-line)
 - [🔧 Configuration](#-configuration)
@@ -25,9 +24,7 @@
 
 > **Putzteufel** /ˈpʊtsˌtɔɪfəl/ (*POOTS-toy-fel*): German for "cleaning devil", someone who can't stop tidying up.
 
-putzteufel is a meta cleanup tool. Instead of you remembering how each tool prunes its own leftovers, it finds them and asks that tool to do the cleanup. Where a tool has no cleanup of its own, putzteufel removes the folders itself.
-
-Docker, for example: putzteufel finds stopped containers, unused images and volumes, and stale build cache, and has Docker remove them with its own commands. Xcode's DerivedData has no such command, so putzteufel deletes it itself. [Supported Tools](#-supported-tools) lists which cleanup each tool gets.
+putzteufel is a meta cleanup tool. It finds what your tools leave behind and has each tool clean up after itself, so `docker` prunes its own images and volumes. Where a tool has no cleanup command, such as Xcode's DerivedData, putzteufel deletes the folders itself. See [Supported Tools](#-supported-tools).
 
 ### Installation
 
@@ -35,7 +32,7 @@ Docker, for example: putzteufel finds stopped containers, unused images and volu
 
 ```sh
 npx putzteufel
-npm install -g putzteufel   # or keep it on PATH
+npm install -g putzteufel
 ```
 
 ---
@@ -43,44 +40,11 @@ npm install -g putzteufel   # or keep it on PATH
 ## 🚀 Quick Start
 
 ```sh
-putzteufel                          # scan the current folder and all caches
-putzteufel ~/Code --older-than 90   # only select what is untouched for 90 days
+putzteufel                     # current folder and all caches
+putzteufel --older-than 90     # select only what is older than 90 days
 ```
 
-Move with `↑↓`, select with `space`, press `d` to review and `y` to clean. `?` shows every key.
-
----
-
-## 📖 How It Works
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  SCAN                                                    │
-│  Plugins find projects, caches and tool leftovers,       │
-│  measure them, and tag each with its impact.             │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│  SELECT                                                  │
-│  Safe items start selected. Browse files, filter,        │
-│  and raise or lower the age threshold with [ and ].      │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│  REVIEW                                                  │
-│  Every path, command, tool install and hook is listed.   │
-│  Nothing runs until you press y.                         │
-└──────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│  CLEAN                                                   │
-│  Native commands run, folders are deleted or trashed,    │
-│  and every step is written to the operations log.        │
-└──────────────────────────────────────────────────────────┘
-```
+`?` shows every key.
 
 ---
 
@@ -88,7 +52,7 @@ Move with `↑↓`, select with `space`, press `d` to review and `y` to clean. `
 
 ### Built-in
 
-These have no cleanup command of their own, so putzteufel deletes the folders itself.
+putzteufel deletes the folders itself.
 
 | Name | Group | Description |
 |---|---|---|
@@ -130,7 +94,7 @@ These have no cleanup command of their own, so putzteufel deletes the folders it
 
 ### Vendored
 
-These are cleaned with the tool's own command. When the tool is missing, putzteufel deletes the folders directly, or installs it with Homebrew first if you allow it (marked ¹). `docker`, `podman`, `brew`, `gem` and `xcrun` only show up when installed.
+The tool cleans up with its own command. If it is missing, putzteufel deletes the folders instead, or installs the tool with Homebrew first (¹).
 
 | Name | Group | Description |
 |---|---|---|
@@ -172,62 +136,48 @@ These are cleaned with the tool's own command. When the tool is missing, putzteu
 | `putzteufel plugins` | list plugins, their tools and config errors |
 | `putzteufel history` | cleanups recorded in the operations log |
 
-```sh
-putzteufel plan --plugin Docker --older-than 30
-putzteufel clean --impact regenerates --trash --yes
-putzteufel scan --json | jq 'select(.event == "done")'
-```
-
-Run `putzteufel --help` for every selector and flag.
+Add `--json` for newline-delimited JSON. `putzteufel --help` lists every flag.
 
 ---
 
 ## 🔧 Configuration
 
-putzteufel reads `~/.config/putzteufel/config.mjs`, then `./putzteufel.config.mjs`, then any `--config FILE`.
+Config is read from `~/.config/putzteufel/config.mjs`, `./putzteufel.config.mjs` and `--config FILE`.
 
 ```js
 export default {
-  settings: {
-    roots: ['~/Code'],
-    disable: ['Trash', 'Docker/Unused volumes'],
-  },
+  settings: { disable: ['Trash'] },
   plugins: [
-    { name: 'Spotify cache', paths: ['~/Library/Caches/com.spotify.client'] },
-    { name: 'Old DMGs', list: 'find ~/Downloads -name "*.dmg" -mtime +30', impact: 'redownload' },
     { name: 'Colima', requires: ['colima'], list: 'colima list', clean: 'colima prune -f' },
   ],
   projects: [{ name: 'Gleam', markers: ['gleam.toml'], dirs: ['build'] }],
 };
 ```
 
-Built-in plugins live in `src/plugins/`, one file per tool. Adding one is a new file plus a line in `src/plugins/index.ts`.
+Built-in plugins are one file per tool in `src/plugins/`.
 
 ---
 
 ## 🛡️ Safety
 
-- Symlinks are never followed or deleted through
-- Inside a git repo, a folder like `build/` is only offered if git ignores it
-- The home folder, its parents and system folders are refused, whatever a config says
-- Items tagged `data loss` go to the Trash even in delete mode
-- A folder found by several plugins is counted and cleaned once
-- Every cleaned, failed or skipped item is logged to `~/Library/Logs/putzteufel/operations.log` (or `$XDG_STATE_HOME/putzteufel/` elsewhere)
+- Nothing is removed before you confirm the review
+- Symlinks are never followed, and a committed `build/` is never offered
+- The home folder and system folders are always refused
+- Unrecoverable folders go to the Trash
+- Every operation is logged
 
-putzteufel deletes files. It is free software under the GNU General Public License v3.0 or later (see `LICENSE`), provided **without any warranty**: see sections 15 and 16. Use Trash mode (`t`) when you are unsure, and keep backups of anything you cannot recreate.
+putzteufel deletes files and comes **without any warranty** (GPL-3.0-or-later, see `LICENSE`).
 
 ---
 
 ## 🧑‍💻 Development
-
-Development needs Node.js 26.4 or newer.
 
 ```sh
 npm install
 npm start
 npm test
 npm run typecheck
-npm run build   # bundles dist/putzteufel.js, also run by npm publish
+npm run build
 ```
 
-Sources are TypeScript in `src/` and run directly through [tsx](https://tsx.is). The TUI is built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).
+Built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).
