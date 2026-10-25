@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { type MapNode, arcAtPixel, fit, rectAt, squarify, sunburstArcs, sunburstGeometry, treemapRects } from '../src/interfaces/tui/map/layout.ts';
 
 const leaf = (key: string, size: number): MapNode => ({ key, label: key, size, color: '#336699', dim: false, children: [] });

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { act } from 'react';
 import { loadState, saveState, statePath } from '../src/infrastructure/store/state.ts';
 import { builtinPlugins } from '../src/plugins/index.ts';
@@ -229,7 +230,7 @@ test('a folder two plugins claim is listed under both, counted once and cleaned 
   await press('y');
   await waitFor((f) => /Cleaned \d of 3 item\(s\)/.test(f), 'cleaned');
   assert.match(frame(), /↷ skipped/);
-  assert.equal((await Bun.file(journal).text()).trim(), 'tool');
+  assert.equal((await readFile(journal, 'utf8')).trim(), 'tool');
 });
 
 test('the mouse wheel scrolls the items and the preview, and dragging a border resizes the panes', async () => {

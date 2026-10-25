@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { type Target } from '../src/domain/types.ts';
 import { coveredIn, overlapIndex, uniqueSize } from '../src/domain/overlap.ts';
 

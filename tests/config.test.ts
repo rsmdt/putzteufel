@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { loadConfig } from '../src/infrastructure/config/load.ts';
 import { type Target } from '../src/domain/types.ts';
 import { pluginsFrom, singleItem } from '../src/infrastructure/plugins/build.ts';

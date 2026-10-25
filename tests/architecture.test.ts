@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 
-const SRC = path.join(import.meta.dir, '..', 'src');
+const SRC = path.join(import.meta.dirname, '..', 'src');
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

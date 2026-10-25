@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { fuzzyMatch } from '../src/domain/fuzzy.ts';
 import { type Hint, fitHints, hintsWidth } from '../src/interfaces/tui/hints.ts';
 import { BINDINGS, footerHints, helpSections, keyToken, resolve } from '../src/interfaces/tui/keys.ts';

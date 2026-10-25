@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, utimesSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { tempDir, write } from './fixture.ts';
 
-const BIN = path.join(import.meta.dir, '..', 'bin', 'putzteufel.ts');
+const BIN = path.join(import.meta.dirname, '..', 'bin', 'putzteufel.ts');
 
 function run(args: string[], cwd: string, home = tempDir()) {
-  const result = Bun.spawnSync(['bun', BIN, ...args], { cwd, env: { ...process.env, XDG_CONFIG_HOME: home, PUTZTEUFEL_LOG: path.join(cwd, 'ops.log') } });
+  const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, ...args], { cwd, env: { ...process.env, XDG_CONFIG_HOME: home, PUTZTEUFEL_LOG: path.join(cwd, 'ops.log') } });
   const stdout = result.stdout.toString();
   const events = stdout
     .split('\n')
     .filter((l) => l.startsWith('{'))
     .map((l) => JSON.parse(l));
-  return { code: result.exitCode, stdout, stderr: result.stderr.toString(), events, of: (name: string) => events.filter((e) => e.event === name) };
+  return { code: result.status, stdout, stderr: result.stderr.toString(), events, of: (name: string) => events.filter((e) => e.event === name) };
 }
 
 function projects(): string {

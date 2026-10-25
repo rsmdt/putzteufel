@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { test } from 'node:test';
 import { scanAll } from '../src/application/scan.ts';
 import type { ScanProgress } from '../src/domain/types.ts';
 import { projectsScanner, singleItem } from '../src/infrastructure/plugins/build.ts';
@@ -8,7 +10,7 @@ import { builtinPlugins } from '../src/plugins/index.ts';
 import { tempDir, write } from './fixture.ts';
 import { start } from './harness.tsx';
 
-const BIN = path.join(import.meta.dir, '..', 'bin', 'putzteufel.ts');
+const BIN = path.join(import.meta.dirname, '..', 'bin', 'putzteufel.ts');
 
 test('the scan reports which plugins and measurements are still running', async () => {
   const root = tempDir();
@@ -43,16 +45,16 @@ test('scan --verbose logs each start and finish; --json emits progress events; s
   const root = tempDir();
   write(root, { 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Slow tool', list: 'sleep 1; echo ${root}/slow', clean: 'true' }] };`, 'slow/a': 'x' });
   const env = { ...process.env, XDG_CONFIG_HOME: tempDir(), PUTZTEUFEL_LOG: path.join(root, 'ops.log') };
-  const verbose = Bun.spawnSync(['bun', BIN, 'scan', '--no-projects', '--only', 'Slow tool', '--verbose'], { cwd: root, env });
+  const verbose = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, 'scan', '--no-projects', '--only', 'Slow tool', '--verbose'], { cwd: root, env });
   const log = verbose.stderr.toString();
   assert.match(log, /start  scan +Slow tool/);
   assert.match(log, /done +\d+\.\ds  Slow tool/);
-  const json = Bun.spawnSync(['bun', BIN, 'scan', '--no-projects', '--only', 'Slow tool', '--json'], { cwd: root, env });
+  const json = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, 'scan', '--no-projects', '--only', 'Slow tool', '--json'], { cwd: root, env });
   const progress = json.stdout.toString().split('\n').filter((l) => l.includes('"progress"')).map((l) => JSON.parse(l));
   assert.ok(progress.length >= 1);
   assert.equal(progress[0].running[0].label, 'Slow tool');
   write(root, { ...Object.fromEntries(Array.from({ length: 3000 }, (_, i) => [`big/${i % 30}/${i}`, 'x'])), 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Big', paths: ['${root}/big'] }] };` });
-  const stopped = Bun.spawnSync(['bun', BIN, 'scan', '--no-projects', '--only', 'Big'], { cwd: root, env: { ...env, PUTZTEUFEL_WALK_TIMEOUT_MS: '1' } });
+  const stopped = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, 'scan', '--no-projects', '--only', 'Big'], { cwd: root, env: { ...env, PUTZTEUFEL_WALK_TIMEOUT_MS: '1' } });
   assert.match(stopped.stderr.toString(), /measuring .*big took too long and was stopped/);
 });
 
@@ -69,10 +71,10 @@ test('a plugin that never finishes is stopped and the scan completes', () => {
   const root = tempDir();
   write(root, { 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Stuck', list: 'sleep 30; echo /tmp', clean: 'true' }] };` });
   const startedAt = Date.now();
-  const r = Bun.spawnSync(['bun', BIN, 'scan', '--no-projects', '--only', 'Stuck'], { cwd: root, env: { ...process.env, XDG_CONFIG_HOME: tempDir(), PUTZTEUFEL_PLUGIN_TIMEOUT_MS: '700' } });
+  const r = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, 'scan', '--no-projects', '--only', 'Stuck'], { cwd: root, env: { ...process.env, XDG_CONFIG_HOME: tempDir(), PUTZTEUFEL_PLUGIN_TIMEOUT_MS: '700' } });
   assert.ok(Date.now() - startedAt < 10_000, `${Date.now() - startedAt}ms`);
   assert.match(r.stderr.toString(), /Stuck: stopped looking after 0?\.?7?s?\d*s?; items it found so far are kept|Stuck: stopped looking after/);
-  assert.equal(r.exitCode, 0);
+  assert.equal(r.status, 0);
 });
 
 test('rows that are done show their dot while other plugins keep the scan running', async () => {
@@ -92,7 +94,7 @@ test('while an item is measured, the preview shows a running step naming its fol
   const slow = singleItem({ name: 'Slow measure', group: 'Test', list: `echo ${root}/slow`, clean: 'true' });
   const measure = slow.measure.bind(slow);
   slow.measure = async (target) => {
-    await Bun.sleep(2500);
+    await sleep(2500);
     return measure(target);
   };
   const { press, waitFor } = await start(root, 180, 34, [slow]);

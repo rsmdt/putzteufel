@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, utimesSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { act } from 'react';
 import { chmodSync, readFileSync } from 'node:fs';
 import { forgetWhich } from '../src/infrastructure/shell.ts';

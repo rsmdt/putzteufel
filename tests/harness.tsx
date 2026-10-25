@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach } from 'bun:test';
+import { afterEach } from 'node:test';
 import { testRender } from '@opentui/react/test-utils';
 import { act } from 'react';
 import { type Plugin } from '../src/domain/types.ts';

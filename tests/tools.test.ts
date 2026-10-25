@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { type Target } from '../src/domain/types.ts';
 import { forgetWhich } from '../src/infrastructure/shell.ts';
 import { singleItem } from '../src/infrastructure/plugins/build.ts';

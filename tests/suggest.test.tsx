@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, test } from 'bun:test';
+import { afterEach, test } from 'node:test';
 import { forgetWhich } from '../src/infrastructure/shell.ts';
 import { singleItem } from '../src/infrastructure/plugins/build.ts';
 import { tempDir, write } from './fixture.ts';
 import { start } from './harness.tsx';
 
-const BIN = path.join(import.meta.dir, '..', 'bin', 'putzteufel.ts');
+const BIN = path.join(import.meta.dirname, '..', 'bin', 'putzteufel.ts');
 const ORIGINAL_PATH = process.env.PATH;
 
 afterEach(() => {
@@ -51,8 +52,8 @@ test('scan --json reports suggestions and tools installs them only with --yes', 
   write(root, { 'putzteufel.config.mjs': `export default { plugins: [${JSON.stringify(spec)}] };` });
   const env = { ...process.env, PATH: `${bin}${path.delimiter}${ORIGINAL_PATH}`, XDG_CONFIG_HOME: tempDir(), PUTZTEUFEL_LOG: path.join(root, 'ops.log') };
   const run = (args: string[]) => {
-    const r = Bun.spawnSync(['bun', BIN, ...args, '--no-projects', '--only', 'Fake cache'], { cwd: root, env });
-    return { code: r.exitCode, stdout: r.stdout.toString(), events: r.stdout.toString().split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l)) };
+    const r = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), BIN, ...args, '--no-projects', '--only', 'Fake cache'], { cwd: root, env });
+    return { code: r.status, stdout: r.stdout.toString(), events: r.stdout.toString().split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l)) };
   };
   const scan = run(['scan', '--json']);
   const suggestion = scan.events.find((e) => e.event === 'suggestion').suggestion;

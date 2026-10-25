@@ -220,14 +220,14 @@ putzteufel deletes files. It is free software under the GNU General Public Licen
 
 ## 🧑‍💻 Development
 
-Development needs [Bun](https://bun.sh) 1.3.14 or newer.
+Development needs Node.js 26.4 or newer.
 
 ```sh
-bun install
-bun run start
-bun run test
-bun run typecheck
-bun run build   # bundles dist/putzteufel.js for Node, also run by npm publish
+npm install
+npm start
+npm test
+npm run typecheck
+npm run build   # bundles dist/putzteufel.js, also run by npm publish
 ```
 
-Sources are TypeScript in `src/` and run directly under Bun. The TUI is built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).
+Sources are TypeScript in `src/` and run directly through [tsx](https://tsx.is). The TUI is built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).

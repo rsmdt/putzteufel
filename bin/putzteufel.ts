@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { main } from '../src/interfaces/cli/main.ts';
 
 const code = await main();

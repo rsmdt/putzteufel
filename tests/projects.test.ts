@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { test } from 'bun:test';
+import { test } from 'node:test';
 import { builtinPlugins } from '../src/plugins/index.ts';
 import { type Target } from '../src/domain/types.ts';
 import { projectsScanner } from '../src/infrastructure/plugins/build.ts';
