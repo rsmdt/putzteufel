@@ -39,15 +39,15 @@ function CellRows({ grid }: { grid: Cell[][] }) {
 }
 
 export function MapPane({ mode, root, treemapFocus, activeKey, depth, width, height, focused, focusColor, onPick }: MapPaneProps) {
-  const { icons } = useLook();
+  const { icons, theme } = useLook();
   const ref = useRef<BoxRenderable>(null);
   const inner = { w: Math.max(4, width - 2), h: Math.max(2, height - 2) };
   const grid = useMemo(() => {
     if (mode === 'treemap') return renderTreemap(treemapRects(treemapFocus, inner.w, inner.h), inner.w, inner.h, activeKey, (n) => human(n.size), icons.map);
     const focus = ancestry(root, activeKey ?? '').at(-1) ?? root;
     const share = root.size ? `${Math.round((focus.size / root.size) * 100)}%` : '';
-    return renderSunburst(root, inner.w, inner.h, activeKey, [focus.label, human(focus.size), share], depth, icons.map);
-  }, [mode, root, treemapFocus, activeKey, inner.w, inner.h, depth, icons]);
+    return renderSunburst(root, inner.w, inner.h, activeKey, [focus.label, human(focus.size), share], depth, icons.map, { text: theme.text, muted: theme.muted });
+  }, [mode, root, treemapFocus, activeKey, inner.w, inner.h, depth, icons, theme]);
 
   const onMouseDown = (event: MouseEvent) => {
     const box = ref.current;

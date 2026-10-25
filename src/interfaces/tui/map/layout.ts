@@ -125,7 +125,7 @@ function arcColor(arc: Arc, highlight: Set<string>, active: string | undefined):
   return arc.node.dim ? shade(arc.node.color, -0.6) : arc.node.color;
 }
 
-export function renderSunburst(root: MapNode, width: number, height: number, active: string | undefined, centerLines: string[], maxDepth = 3, glyphs = BLOCK_GLYPHS): Cell[][] {
+export function renderSunburst(root: MapNode, width: number, height: number, active: string | undefined, centerLines: string[], maxDepth = 3, glyphs = BLOCK_GLYPHS, centerColors = { text: '#ffffff', muted: '#a0a0a0' }): Cell[][] {
   const arcs = sunburstArcs(root, maxDepth);
   const geometry = sunburstGeometry(width, height, maxDepth);
   const highlight = new Set(active ? ancestry(root, active).map((n) => n.key) : []);
@@ -153,7 +153,7 @@ export function renderSunburst(root: MapNode, width: number, height: number, act
     const fitted = fit(text, holeWidth);
     const start = Math.floor(width / 2 - fitted.length / 2);
     [...fitted].forEach((ch, j) => {
-      if (row[start + j]) row[start + j] = { ch, fg: i === 0 ? '#ffffff' : '#a0a0a0' };
+      if (row[start + j]) row[start + j] = { ch, fg: i === 0 ? centerColors.text : centerColors.muted };
     });
   });
   return grid;

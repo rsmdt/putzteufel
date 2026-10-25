@@ -260,3 +260,19 @@ test('the mouse wheel scrolls the items and the preview, and dragging a border r
   await act(async () => setup.mockMouse.drag(10, previewTop, 10, previewTop - 8));
   await waitFor((f) => lines(f).findIndex((l) => l.includes('─ Preview')) === previewTop - 8, 'the preview grew upwards');
 });
+
+test('the light theme draws no white text on its light background', async () => {
+  const { setup, waitFor } = await start(twoProjects(), 160, 30, undefined, { theme: 'light' });
+  await waitFor(ready, 'scan');
+  const isWhite = (rgba: Iterable<number>) => [...rgba].slice(0, 3).every((v) => v === 255);
+  const onLight = (rgba: Iterable<number>) => {
+    const [r, g, b, a] = [...rgba];
+    return a === 0 || (r + g + b) / 3 > 200;
+  };
+  const invisible = setup
+    .captureSpans()
+    .lines.flatMap((line) => line.spans)
+    .filter((s) => s.text.trim() && isWhite(s.fg.buffer) && onLight(s.bg.buffer))
+    .map((s) => s.text.trim());
+  assert.deepEqual(invisible, []);
+});

@@ -72,7 +72,7 @@ function RowLine({ row, active, young, shared, width, color, highlight, spinner,
   }
   if (row.kind === 'group') {
     return (
-      <text bg={bg} wrapMode="none">
+      <text bg={bg} fg={theme.text} wrapMode="none">
         <Marker color={color} spinner={spinner} waiting={waiting} />
         <strong>{`${icons.category(row.name)}${fit(row.name, width - 30)}`}</strong>
         <span fg={theme.muted}>{`  ${stats(row.targets)}`}</span>
@@ -82,7 +82,7 @@ function RowLine({ row, active, young, shared, width, color, highlight, spinner,
   if (row.kind === 'plugin') {
     const name = fit(row.name, width - 48);
     return (
-      <text bg={bg} wrapMode="none">
+      <text bg={bg} fg={theme.text} wrapMode="none">
         {'  '}
         <Marker color={color} spinner={spinner} waiting={waiting} />
         {`${box(row.targets)} `}
