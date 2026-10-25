@@ -28,20 +28,15 @@ putzteufel is a meta cleanup tool. It finds what your tools leave behind and has
 
 ### Installation
 
-**Requirements:** Node.js 26.4 or newer
-
-```sh
-npx putzteufel
-npm install -g putzteufel
-```
+**Requirements:** Node.js 26.4 or newer. No install needed, run it with `npx`.
 
 ---
 
 ## 🚀 Quick Start
 
 ```sh
-putzteufel                     # current folder and all caches
-putzteufel --older-than 90     # select only what is older than 90 days
+npx putzteufel                     # TUI: current folder and all caches
+npx putzteufel --older-than 90     # TUI: select only what is older than 90 days
 ```
 
 `?` shows every key.
@@ -94,15 +89,15 @@ The tool cleans up with its own command. If it is missing, putzteufel deletes th
 
 | Command | Purpose |
 |---|---|
-| `putzteufel scan` | list what can be cleaned, each item with a stable key |
-| `putzteufel files KEY` | list the files inside one item |
-| `putzteufel plan` | show what a cleanup would do, nothing is removed |
-| `putzteufel clean --yes` | clean the selected items |
-| `putzteufel tools` | native tools the scan suggests installing |
-| `putzteufel plugins` | list plugins, their tools and config errors |
-| `putzteufel history` | cleanups recorded in the operations log |
+| `npx putzteufel scan` | list what can be cleaned, each item with a stable key |
+| `npx putzteufel files KEY` | list the files inside one item |
+| `npx putzteufel plan` | show what a cleanup would do, nothing is removed |
+| `npx putzteufel clean --yes` | clean the selected items |
+| `npx putzteufel tools` | native tools the scan suggests installing |
+| `npx putzteufel plugins` | list plugins, their tools and config errors |
+| `npx putzteufel history` | cleanups recorded in the operations log |
 
-Add `--json` for newline-delimited JSON. `putzteufel --help` lists every flag.
+Add `--json` for newline-delimited JSON. `npx putzteufel --help` lists every flag.
 
 ---
 
