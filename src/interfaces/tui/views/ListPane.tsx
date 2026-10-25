@@ -18,13 +18,19 @@ interface RowProps {
   width: number;
   color?: string;
   highlight?: number[];
+  spinner?: string;
 }
 
-function RowLine({ row, active, young, shared, width, color, highlight }: RowProps) {
+function Marker({ color, spinner }: { color?: string; spinner?: string }) {
+  const { theme } = useLook();
+  return spinner ? <span fg={theme.accent}>{`${spinner} `}</span> : <Swatch color={color} />;
+}
+
+function RowLine({ row, active, young, shared, width, color, highlight, spinner }: RowProps) {
   const { theme, icons } = useLook();
   const bg = active ? theme.activeBg : undefined;
   if (row.kind === 'section') {
-    const label = `── ${row.name} `;
+    const label = `${spinner ? `${spinner} ` : ''}── ${row.name} `;
     const tail = `  ${stats(row.targets)} `;
     return (
       <text bg={bg} wrapMode="none" fg={theme.muted}>
@@ -37,7 +43,7 @@ function RowLine({ row, active, young, shared, width, color, highlight }: RowPro
   if (row.kind === 'group') {
     return (
       <text bg={bg} wrapMode="none">
-        <Swatch color={color} />
+        <Marker color={color} spinner={spinner} />
         <strong>{`${icons.category(row.name)}${fit(row.name, width - 30)}`}</strong>
         <span fg={theme.muted}>{`  ${stats(row.targets)}`}</span>
       </text>
@@ -48,10 +54,10 @@ function RowLine({ row, active, young, shared, width, color, highlight }: RowPro
     return (
       <text bg={bg} wrapMode="none">
         {'  '}
-        <Swatch color={color} />
+        <Marker color={color} spinner={spinner} />
         {`${box(row.targets)} `}
         <Highlighted text={name} positions={name === row.name ? highlight : undefined} color={theme.accent} />
-        <span fg={theme.muted}>{`  ${stats(row.targets)}`}</span>
+        <span fg={theme.muted}>{row.targets.length ? `  ${stats(row.targets)}` : '  looking for items…'}</span>
         {row.targets[0] ? <ImpactTag target={row.targets[0]} /> : null}
       </text>
     );
@@ -71,7 +77,7 @@ function RowLine({ row, active, young, shared, width, color, highlight }: RowPro
   return (
     <text bg={bg} fg={t.selected ? theme.text : theme.muted} wrapMode="none">
       {'    '}
-      <Swatch color={color} />
+      <Marker color={color} spinner={spinner} />
       {head}
       <Highlighted text={shown} positions={shown === label ? highlight : undefined} color={theme.accent} />
       <span fg={theme.muted}>{detail ? `  ${fit(detail, 24)}` : ''}</span>
@@ -94,17 +100,19 @@ interface ListPaneProps {
   highlights: Map<string, number[]>;
   young: (t: Target) => boolean;
   shared: (t: Target) => string[];
+  busy: (row: Row) => boolean;
+  spinner: string;
   bottomTitle: string;
   empty?: Omit<EmptyStateProps, 'width' | 'height'>;
 }
 
-export function ListPane({ rows, cursor, offset, width, height, focused, focusColor, colors, highlights, young, shared, bottomTitle, empty }: ListPaneProps) {
+export function ListPane({ rows, cursor, offset, width, height, focused, focusColor, colors, highlights, young, shared, busy, spinner, bottomTitle, empty }: ListPaneProps) {
   const inner = { w: width - 2, h: height - 2 };
   return (
     <Frame title={rows.length ? `Items ${Math.min(cursor, rows.length - 1) + 1}/${rows.length}` : 'Items'} bottomTitle={bottomTitle} focused={focused} focusColor={focusColor} width={width} height={height}>
       {rows.length === 0 && empty ? <EmptyState {...empty} width={inner.w} height={inner.h} /> : null}
       {rows.slice(offset, offset + inner.h).map((row, i) => (
-        <RowLine key={row.key} row={row} active={offset + i === cursor} young={young} shared={shared} width={inner.w} color={colors.get(row.key)} highlight={highlights.get(row.key)} />
+        <RowLine key={row.key} row={row} active={offset + i === cursor} young={young} shared={shared} spinner={busy(row) ? spinner : undefined} width={inner.w} color={colors.get(row.key)} highlight={highlights.get(row.key)} />
       ))}
     </Frame>
   );

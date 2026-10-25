@@ -13,7 +13,7 @@ putzteufel scan                # plain dry run, no TUI (putzteufel --list still 
 putzteufel plugins             # which plugins are active, config errors
 ```
 
-Layout: the header starts with a spinner that turns while putzteufel scans or cleans (a check when it is done) and a mode pill (LIST, FILES, MAP, PREVIEW, FILTER, REVIEW, CLEANING, …) that says what your keys act on. Below it are the item list (or the file browser), the preview of the item at the cursor, and the disk map on the right. Each pane has a frame whose titles show the cursor position, the sort and the selection; the focused pane's frame is drawn in the pill's color. The line above the footer shows the latest message (warnings, results, mode changes); `w` opens all of them. The footer lists the keys for the current mode and drops the least important ones first when the window is narrow. Dialogs open over a dimmed screen.
+Layout: the header starts with a spinner that turns while putzteufel scans or cleans (a check when it is done) and a mode pill. While scanning, every row that is still being looked for or measured shows a spinner in place of its colored dot, a plugin still looking for items appears right away as a `looking for items…` row, and the preview of the row shows its scan log: what the plugin ran, what it found, what is being measured and how long each step took (LIST, FILES, MAP, PREVIEW, FILTER, REVIEW, CLEANING, …) that says what your keys act on. Below it are the item list (or the file browser), the preview of the item at the cursor, and the disk map on the right. Each pane has a frame whose titles show the cursor position, the sort and the selection; the focused pane's frame is drawn in the pill's color. The line above the footer shows the latest message (warnings, results, mode changes); `w` opens all of them. The footer lists the keys for the current mode and drops the least important ones first when the window is narrow. Dialogs open over a dimmed screen.
 
 Keys (`?` shows all of them, searchable with `/`, built from the same list the footer uses):
 
@@ -32,7 +32,6 @@ Keys (`?` shows all of them, searchable with `/`, built from the same list the f
 | `t` | delete vs. Trash mode |
 | `d` | review and clean |
 | `w` | message log |
-| `p` | scan progress: every plugin still looking for items and every folder still being measured, with how long each has run |
 | `T` | theme (dark, light, high contrast; previews live, saved on enter) |
 | `r`, `q` | rescan, quit |
 
@@ -77,7 +76,7 @@ putzteufel plugins                         # plugins, their tools, config errors
 putzteufel history                         # cleanups recorded in the operations log
 ```
 
-Selection works the same for `scan` (the `x` column), `plan` and `clean`: `--key`, `--exclude-key`, `--plugin`, `--item Plugin/Item`, `--group`, `--impact`, `--filter` (fuzzy), `--all`, `--default` (the TUI's default selection, also used when nothing else is given) and `--older-than DAYS`. `--only PLUGIN` scans just those plugins, which is much faster. `--verbose` prints each plugin scan and folder measurement to stderr as it starts and finishes, with its time, which shows what a slow scan is waiting for. A folder walk is stopped after 10 minutes (`PUTZTEUFEL_WALK_TIMEOUT_MS` changes that); its size is then reported as a lower bound with a warning. `clean` without `--yes` prints the plan and exits with code 3; exit codes are 0 ok, 1 error, 2 some steps failed. Native tools are only installed with `--install-tools`.
+Selection works the same for `scan` (the `x` column), `plan` and `clean`: `--key`, `--exclude-key`, `--plugin`, `--item Plugin/Item`, `--group`, `--impact`, `--filter` (fuzzy), `--all`, `--default` (the TUI's default selection, also used when nothing else is given) and `--older-than DAYS`. `--only PLUGIN` scans just those plugins, which is much faster. `--verbose` prints each plugin scan and folder measurement to stderr as it starts and finishes, with its time, which shows what a slow scan is waiting for. Nothing in a scan can hang forever: a tool's command is stopped after 2 minutes together with any child processes it started, a plugin that is still looking after 5 minutes is stopped and keeps what it found (`PUTZTEUFEL_PLUGIN_TIMEOUT_MS`), and a folder walk is stopped after 10 minutes with its size reported as a lower bound (`PUTZTEUFEL_WALK_TIMEOUT_MS`). Each stop shows up as a warning and in that row's scan log. `clean` without `--yes` prints the plan and exits with code 3; exit codes are 0 ok, 1 error, 2 some steps failed. Native tools are only installed with `--install-tools`.
 
 With `--json`, every command writes newline-delimited JSON, one event per line, each with `"event"` and `"schema": 1`:
 

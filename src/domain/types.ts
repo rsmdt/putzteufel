@@ -60,8 +60,18 @@ export interface Activity {
   id: string;
   kind: 'scan' | 'measure';
   label: string;
+  plugins: string[];
+  group?: string;
+  targetId?: number;
   detail?: string;
   startedAt: number;
+}
+
+export interface ScanLogEntry {
+  at: number;
+  plugins: string[];
+  targetId?: number;
+  text: string;
 }
 
 export interface ScanProgress {
@@ -76,6 +86,7 @@ export type Emit = (draft: TargetDraft) => void;
 export interface Plugin {
   name: string;
   item?: string;
+  owners?: string[];
   group: string;
   description?: string;
   fallback?: boolean;

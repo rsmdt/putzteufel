@@ -33,7 +33,12 @@ export function stats(targets: Target[]): string {
   return `${selected.length}/${targets.length} · ${human(uniqueSize(selected))} of ${human(uniqueSize(targets))}`;
 }
 
-export function groupTargets(targets: Target[], filter: string, sort: Sort): Filtered {
+export interface Pending {
+  plugin: string;
+  group: string;
+}
+
+export function groupTargets(targets: Target[], filter: string, sort: Sort, pending: Pending[] = []): Filtered {
   const highlights = new Map<string, number[]>();
   const categories = new Map<string, Map<string, Target[]>>();
   for (const t of targets) {
@@ -46,6 +51,12 @@ export function groupTargets(targets: Target[], filter: string, sort: Sort): Fil
     const plugins = categories.get(t.group) ?? new Map<string, Target[]>();
     categories.set(t.group, plugins);
     plugins.set(t.plugin, [...(plugins.get(t.plugin) ?? []), t]);
+  }
+  for (const p of pending) {
+    if (filter && !bestMatch([p.plugin, p.group], filter)) continue;
+    const plugins = categories.get(p.group) ?? new Map<string, Target[]>();
+    categories.set(p.group, plugins);
+    if (!plugins.has(p.plugin)) plugins.set(p.plugin, []);
   }
   const sorted = sortBy([...categories.entries()], sort, ([name, plugins]) => groupView(name, [...plugins.values()].flat()));
   const ordered = SECTIONS.flatMap((section) => sorted.filter(([name]) => sectionOf(name) === section));

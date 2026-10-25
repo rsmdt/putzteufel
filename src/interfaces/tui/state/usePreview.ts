@@ -19,6 +19,8 @@ interface PreviewInputs {
   minAge: number;
   theme: Theme;
   overlap: OverlapIndex;
+  log: string[];
+  busy: boolean;
   version: number;
 }
 
@@ -56,6 +58,15 @@ function browseLines(browse: Browse, inputs: PreviewInputs): Line[] {
   return [`${tildify(entry.path)}  ·  ${human(entry.size)}  ·  ${entry.isDir ? 'folder, enter opens it' : 'file'}`, ...impact, 'space selects or deselects the whole item; it is removed as one unit'];
 }
 
+function withLog(lines: Line[], inputs: PreviewInputs): Line[] {
+  if (!inputs.log.length) return lines;
+  if (!lines.length) return [];
+  const [head, ...rest] = lines;
+  const title: Line = { text: inputs.busy ? 'Scan log (still running):' : 'Scan log:', fg: inputs.busy ? inputs.theme.accent : inputs.theme.muted, bold: true };
+  const log = [title, ...inputs.log.map((text): Line => ({ text, fg: inputs.theme.muted }))];
+  return inputs.busy ? [head, ...log, '', ...rest] : [head, ...rest, '', ...log];
+}
+
 export function usePreview(inputs: PreviewInputs): Line[] {
   const [lines, setLines] = useState<Line[]>([]);
   const { row, browse } = inputs;
@@ -80,5 +91,5 @@ export function usePreview(inputs: PreviewInputs): Line[] {
       clearTimeout(slow);
     };
   }, [row?.key, inputs.version, browse === null, inputs.theme, inputs.overlap]);
-  return browse ? browseLines(browse, inputs) : lines;
+  return browse ? browseLines(browse, inputs) : withLog(lines, inputs);
 }

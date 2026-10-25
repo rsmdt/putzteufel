@@ -20,7 +20,7 @@ function isProtected(p: string): boolean {
 
 async function keptByGit(dir: string, name: string): Promise<boolean> {
   if (name.startsWith('.') || UNGUARDED.has(name)) return false;
-  return execFileAsync('git', ['-C', dir, 'check-ignore', '-q', '--', name]).then(
+  return execFileAsync('git', ['-C', dir, 'check-ignore', '-q', '--', name], { timeout: 15_000 }).then(
     () => false,
     (e: { code?: number | string }) => e.code === 1,
   );
@@ -62,6 +62,7 @@ const ruleKey = (rule: OwnedRule) => `${rule.plugin}/${rule.name}`;
 export class ProjectsScanner implements Plugin {
   name = 'Projects';
   group = 'Projects';
+  owners: string[];
   description = 'Dependency and build folders inside project directories';
   private cleanable = new Map<string, boolean>();
   private newest = new Map<string, Promise<number>>();
@@ -69,6 +70,7 @@ export class ProjectsScanner implements Plugin {
   private rootMarkers: string[];
 
   constructor(private rules: OwnedRule[]) {
+    this.owners = [...new Set(rules.map((r) => r.plugin))];
     this.rootMarkers = ['.git', ...new Set(rules.flatMap((r) => r.markers ?? []).filter((m) => !/[*?]/.test(m)))];
   }
 

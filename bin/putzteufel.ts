@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
 import { main } from '../src/interfaces/cli/main.ts';
 
-process.exitCode = await main();
+const code = await main();
+await new Promise<void>((resolve) => process.stdout.write('', () => resolve()));
+process.exit(code);

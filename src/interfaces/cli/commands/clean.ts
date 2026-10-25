@@ -26,6 +26,7 @@ export async function cleanCommand(values: Values, roots: string[], out: Output)
     return 0;
   }
   const byId = new Map(plan.run.targets.map((t) => [t.id, t]));
+  const writes: Promise<void>[] = [];
   const attempts = new Map<string, number>();
   const icon = { pending: '·', running: '…', done: '✓', failed: '✗', skipped: '↷' };
   const result = await runClean(plan.run, {
@@ -40,8 +41,9 @@ export async function cleanCommand(values: Values, roots: string[], out: Output)
       out.event('failure', { step: stepJson(step, byId), error, decision, attempt });
       return decision;
     },
-    onOperation: (operation) => void logOperation(operation),
+    onOperation: (operation) => void writes.push(logOperation(operation)),
   });
+  await Promise.all(writes);
   const failed = result.steps.filter((s) => s.state === 'failed').length;
   out.event('done', { freed: result.freed, cleaned: [...result.cleaned].map((id) => byId.get(id)?.key), aborted: result.aborted, failed });
   out.line(`\nFreed about ${human(result.freed)}: ${result.cleaned.size} of ${plan.items.length} item(s) cleaned${failed ? `, ${failed} step(s) failed` : ''}${result.aborted ? ', aborted' : ''}.`);

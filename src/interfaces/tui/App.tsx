@@ -19,8 +19,8 @@ import { LookContext } from './look.ts';
 import { ancestry } from './map/layout.ts';
 import { browseMap, currentEntry, currentLevel } from './model/browse.ts';
 import { legendLines, reviewLines } from './model/explain.ts';
-import { type Level, type Message, message } from './model/messages.ts';
-import { buildMap, buildRows, colorIndex, groupTargets, ownerLabel, sectionKey } from './model/rows.ts';
+import { type Level, type Message, clock, message } from './model/messages.ts';
+import { type Row, buildMap, buildRows, colorIndex, groupTargets, ownerLabel, sectionKey } from './model/rows.ts';
 import { DEFAULT_SORT, type Sort, describeSort } from '../../domain/sort.ts';
 import { useBrowse } from './state/useBrowse.ts';
 import { useCleanRun } from './state/useCleanRun.ts';
@@ -38,7 +38,7 @@ import { ThemeDialog } from './views/dialogs/Theme.tsx';
 import { MIN_SIZE, TooSmall } from './views/dialogs/TooSmall.tsx';
 import { ToolsDialog } from './views/dialogs/Tools.tsx';
 import { WelcomeDialog } from './views/dialogs/Welcome.tsx';
-import { ActivityDialog } from './views/dialogs/Activity.tsx';
+import { useTicker } from './hooks.ts';
 import { FilesPane } from './views/FilesPane.tsx';
 import { ListPane } from './views/ListPane.tsx';
 import { MAP_MIN_WIDTH, MapPane, type MapMode } from './views/MapPane.tsx';
@@ -117,7 +117,12 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const { browse } = browser;
 
   const targets = scan.targets.current;
-  const { groups, highlights } = useMemo(() => groupTargets(targets, filter, sort), [scan.version, filter, sort]);
+  const scanningPlugins = new Set(scan.progress.running.filter((a) => a.kind === 'scan').flatMap((a) => a.plugins));
+  const measuringTargets = new Set(scan.progress.running.flatMap((a) => (a.targetId === undefined ? [] : [a.targetId])));
+  const withTargets = new Set(targets.map((t) => t.plugin));
+  const pending = scan.progress.running.flatMap((a) => (a.kind === 'scan' && a.group && !withTargets.has(a.plugins[0]) ? [{ plugin: a.plugins[0], group: a.group }] : []));
+  const pendingPlugins = pending.map((p) => p.plugin).join('|');
+  const { groups, highlights } = useMemo(() => groupTargets(targets, filter, sort, pending), [scan.version, filter, sort, pendingPlugins]);
   const rows = useMemo(() => buildRows(groups, filter, collapsed, expanded), [groups, collapsed, expanded]);
   const overlap = useMemo(() => overlapIndex(targets), [scan.version]);
   const tree = useMemo(() => buildMap(groups, theme.hues, new Map(targets.flatMap((t) => { const by = overlap.coveredBy(t); return by ? [[t.id, by] as [number, Target]] : []; }))), [groups, theme, overlap]);
@@ -133,7 +138,21 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const shared = (t: Target) => [...new Set(overlap.sharedWith(t).map(ownerLabel))];
   const ownersOf = (p: string) => (browse ? [...new Set(overlap.owners(p).filter((t) => t.id !== browse.target.id).map(ownerLabel))] : []);
   const exact = useExactFreed(overlay === 'review', selected);
-  const previewLines = usePreview({ row: current, browse, descriptions, recentDays: ctx.recentDays, minAge, theme, overlap, version: scan.version });
+  const targetBusy = (t: Target) => scan.scanning && (measuringTargets.has(t.id) || !scan.measured.current.has(t.id));
+  const rowBusy = (row: Row): boolean => {
+    if (row.kind === 'target') return targetBusy(row.target);
+    if (row.kind === 'plugin') return scanningPlugins.has(row.name) || row.targets.some(targetBusy);
+    const groupsOf = row.kind === 'section' ? groups.filter(([g]) => sectionKey(g) === row.key) : groups.filter(([g]) => g === row.name);
+    return groupsOf.some(([, plugins]) => plugins.some(([name, list]) => (list.length === 0 && scanningPlugins.has(name)) || list.some(targetBusy)));
+  };
+  const spinnerFrame = useTicker(scan.scanning);
+  const spinner = look.icons.spinner[spinnerFrame % look.icons.spinner.length];
+  const logLines = (row?: Row): string[] => {
+    if (!row || row.kind === 'section' || row.kind === 'group') return [];
+    const entries = row.kind === 'plugin' ? scan.logFor(row.name) : scan.logFor(row.target.plugin, row.target.id);
+    return entries.slice(-Math.max(3, previewRows(previewHeight) - 2)).map((e) => `  ${clock(e.at)}  ${e.text}`);
+  };
+  const previewLines = usePreview({ row: current, browse, descriptions, recentDays: ctx.recentDays, minAge, theme, overlap, log: logLines(current), busy: current ? rowBusy(current) : false, version: scan.version });
 
   const overlayContext = (): Context | null => {
     if (!overlay) return null;
@@ -418,7 +437,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
             { text: `${selected.some((t) => t.estimated || t.size === undefined) ? '≈' : ''}${human(uniqueSize(selected))} to free`, priority: 'normal' },
             { text: minAge ? `older than ${minAge}d` : 'any age', color: theme.accent, priority: 'essential' },
             { text: useTrash ? 'trash mode' : 'delete mode', color: useTrash ? theme.warn : theme.error, priority: 'normal' },
-            ...(scanningShown ? [{ text: `scanning: ${scan.progress.running.length} running, ${scan.progress.waiting} waiting (p)`, color: theme.accent, priority: 'essential' as const }] : []),
+            ...(scanningShown ? [{ text: `scanning: ${scan.progress.running.length} running, ${scan.progress.waiting} waiting`, color: theme.accent, priority: 'essential' as const }] : []),
             ...(installing ? [{ text: 'installing tools…', color: theme.warn, priority: 'essential' as const }] : []),
             ...(suggestions.length && !installing ? [{ text: `${suggestions.length} tool suggestion${suggestions.length > 1 ? 's' : ''} (i)`, color: theme.warn, priority: 'essential' as const }] : []),
             ...(mapHidden ? [{ text: `map needs ${MAP_MIN_WIDTH}+ columns, has ${width}`, color: theme.muted, priority: 'essential' as const }] : []),
@@ -441,6 +460,8 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
                 highlights={highlights}
                 young={young}
                 shared={shared}
+                busy={rowBusy}
+                spinner={spinner}
                 bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(uniqueSize(selected))}`}
                 empty={listEmpty}
               />
@@ -470,7 +491,6 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         {overlay === 'review' ? <ReviewDialog screen={screen} lines={reviewText} offset={dialogOffset} /> : null}
         {overlay === 'progress' ? <ProgressDialog screen={screen} steps={run.steps} finishedOrder={run.finishedOrder} failure={run.failure} done={run.done} freed={run.freed} /> : null}
         {overlay === 'help' ? <HelpDialog screen={screen} lines={help} offset={dialogOffset} query={helpQuery} searching={helpSearching} /> : null}
-        {overlay === 'activity' ? <ActivityDialog screen={screen} progress={scan.progress} scanning={scan.scanning} offset={dialogOffset} /> : null}
         {overlay === 'messages' ? <MessagesDialog screen={screen} messages={messages} offset={dialogOffset} /> : null}
         {overlay === 'sort' ? <SortDialog screen={screen} sort={sort} cursor={sortCursor} /> : null}
         {overlay === 'theme' ? <ThemeDialog screen={screen} cursor={Math.max(0, THEMES.findIndex((t) => t.name === themeName))} /> : null}

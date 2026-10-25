@@ -1,11 +1,9 @@
-import { exec, execFile } from 'node:child_process';
+import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 export const execFileAsync = promisify(execFile);
-
-const execAsync = promisify(exec);
 
 const whichCache = new Map<string, Promise<boolean>>();
 
@@ -27,9 +25,66 @@ export function forgetWhich(): void {
   whichCache.clear();
 }
 
-export async function shell(command: string, cwd?: string, timeout = 120_000): Promise<string> {
-  const { stdout } = await execAsync(command, { cwd, timeout, maxBuffer: 64 * 1024 * 1024, shell: process.env.SHELL || '/bin/sh' });
-  return stdout;
+const OUTPUT_LIMIT = 64 * 1024 * 1024;
+const PIPE_GRACE = 200;
+
+export class CommandError extends Error {
+  constructor(
+    message: string,
+    readonly stderr: string,
+    readonly code: number | null,
+  ) {
+    super(message);
+  }
+}
+
+function killGroup(child: ChildProcess): void {
+  try {
+    process.kill(-child.pid!, 'SIGKILL');
+  } catch {
+    child.kill('SIGKILL');
+  }
+}
+
+export function shell(command: string, cwd?: string, timeout = 120_000, signal?: AbortSignal): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new CommandError(`stopped: ${command}`, '', null));
+    const child = spawn(process.env.SHELL || '/bin/sh', ['-c', command], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (error?: CommandError) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', stop);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      if (error) reject(error);
+      else resolve(stdout);
+    };
+    const timer = setTimeout(() => {
+      killGroup(child);
+      finish(new CommandError(`timed out after ${timeout / 1000}s: ${command}`, stderr, null));
+    }, timeout);
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (stdout.length < OUTPUT_LIMIT) stdout += chunk;
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (stderr.length < OUTPUT_LIMIT) stderr += chunk;
+    });
+    const stop = () => {
+      killGroup(child);
+      finish(new CommandError(`stopped: ${command}`, stderr, null));
+    };
+    signal?.addEventListener('abort', stop);
+    child.on('error', (e) => finish(new CommandError(e.message, stderr, null)));
+    child.on('exit', (code) => {
+      const done = () => finish(code === 0 ? undefined : new CommandError(`Command failed: ${command}\n${stderr}`, stderr, code));
+      child.stdout?.once('close', done);
+      setTimeout(done, PIPE_GRACE);
+    });
+  });
 }
 
 export function limiter(concurrency: number) {

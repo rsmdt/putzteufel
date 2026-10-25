@@ -76,7 +76,7 @@ export class ItemPlugin implements Plugin {
     let broken: string | undefined;
     if (spec.list && found) {
       ctx.note?.(`running: ${spec.list}`);
-      output = await shell(spec.list).catch((e: Error & { stderr?: string }) => {
+      output = await shell(spec.list, undefined, undefined, ctx.signal).catch((e: Error & { stderr?: string }) => {
         if (!spec.tool) throw e;
         const lines = (e.stderr || e.message).trim().split('\n').map((l) => l.trim()).filter(Boolean);
         broken = lines.find((l) => /error/i.test(l)) ?? lines.at(-1) ?? 'list command failed';
