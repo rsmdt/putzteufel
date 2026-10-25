@@ -6,8 +6,7 @@ import { tempDir, write } from './fixture.ts';
 
 const BIN = path.join(import.meta.dir, '..', 'bin', 'putzteufel.ts');
 
-function run(args: string[], cwd: string) {
-  const home = tempDir();
+function run(args: string[], cwd: string, home = tempDir()) {
   const result = Bun.spawnSync(['bun', BIN, ...args], { cwd, env: { ...process.env, XDG_CONFIG_HOME: home, PUTZTEUFEL_LOG: path.join(cwd, 'ops.log') } });
   const stdout = result.stdout.toString();
   const events = stdout
@@ -110,4 +109,15 @@ test('files lists an item’s entries; failures follow --on-failure; bad input i
 
   assert.equal(run(['files', 'nope', root, '--no-caches'], root).code, 1);
   assert.equal(run(['clean', '--on-failure', 'sometimes'], root).code, 1);
+});
+
+test('a second scan shows the first scan’s sizes as estimates before measuring', () => {
+  const root = projects();
+  const home = tempDir();
+  run(['scan', root, '--no-caches', '--json'], root, home);
+  const again = run(['scan', root, '--no-caches', '--json'], root, home);
+  const order = again.events.map((e) => e.event).filter((e) => e === 'found' || e === 'measured');
+  assert.ok(order.indexOf('found') < order.indexOf('measured'));
+  assert.ok(again.of('found').every((e) => e.target.estimated === true && e.target.size > 0));
+  assert.ok(again.of('measured').every((e) => e.target.estimated === false));
 });
