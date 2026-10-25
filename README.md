@@ -6,6 +6,8 @@
   Clean up after your tools. Free the space they leave behind with <b>putzteufel</b>.
 </p>
 
+![putzteufel TUI](https://raw.githubusercontent.com/rsmdt/putzteufel/main/docs/tui.png)
+
 ---
 
 ## Table of Contents
