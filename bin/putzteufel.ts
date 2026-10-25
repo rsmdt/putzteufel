@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { main } from '../src/interfaces/cli/main.ts';
 
 const code = await main();

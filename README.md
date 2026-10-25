@@ -31,11 +31,11 @@ Docker, for example: putzteufel finds stopped containers, unused images and volu
 
 ### Installation
 
-**Requirements:** [Bun](https://bun.sh) 1.3.14 or newer
+**Requirements:** Node.js 26.4 or newer
 
 ```sh
-bun install
-bun link            # puts `putzteufel` on PATH
+npx putzteufel
+npm install -g putzteufel   # or keep it on PATH
 ```
 
 ---
@@ -246,9 +246,14 @@ putzteufel deletes files. It is free software under the GNU General Public Licen
 
 ## 🧑‍💻 Development
 
+Development needs [Bun](https://bun.sh) 1.3.14 or newer.
+
 ```sh
+bun install
+bun run start
 bun run test
 bun run typecheck
+bun run build   # bundles dist/putzteufel.js for Node, also run by npm publish
 ```
 
-Sources are TypeScript in `src/` and run directly under Bun, with no build step. The TUI is built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).
+Sources are TypeScript in `src/` and run directly under Bun. The TUI is built on [OpenTUI](https://github.com/anomalyco/opentui). Ideas borrowed from [kondo](https://github.com/tbillington/kondo), [npkill](https://github.com/voidcosmos/npkill), [DaisyDisk](https://daisydiskapp.com), [superfile](https://github.com/yorukot/superfile) and [tuios](https://github.com/Gaurav-Gosain/tuios).
