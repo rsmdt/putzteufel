@@ -44,7 +44,7 @@ Native tools: built-in plugins find their folders even when the tool that owns t
 
 Run order: `settings.hooks.before` (if it fails, nothing runs), installs, then per plugin its `hooks.before`, its items, its `hooks.after`, then uninstalls, then `settings.hooks.after`.
 
-Age threshold: `[`/`]` step through any age, 1, 3, 7, 14, 30, 60, 90, 180 and 365 days, and reselect every item whose age is known: it is selected when it is older than the threshold, and deselected otherwise. `--older-than` or `settings.olderThan` sets the starting value. Projects are aged by their newest source file, other folders by the newest entry directly inside them. Items with nothing on disk to date (Docker objects, unavailable simulators) have no age and keep their selection.
+Age threshold: `[`/`]` step through any age, 1, 3, 7, 14, 30, 60, 90, 180 and 365 days, and reselect every item whose age is known: it is selected when it is older than the threshold, and deselected otherwise. `--older-than` or `settings.olderThan` sets the starting value. Projects are aged by their newest source file, other folders by their newest file at any depth, Docker images, containers, volumes and networks by when Docker created them. Docker's build cache is pruned with `--filter until=` set to the threshold. Items without a date (unavailable simulators, tool-reported lists) keep their selection.
 
 Every item carries an impact tag that says what happens after it is removed. The preview under the list explains the tag and the item's own note, and says why the item is or is not selected; `?` shows the legend; the review screen totals the selection per tag.
 
@@ -195,12 +195,12 @@ Unknown keys, wrong types, a `clean` without anything listing what it affects, t
 ## Built-in plugins
 
 - Languages
-  - JavaScript: Node (`node_modules`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.parcel-cache`, `.angular`, `.expo`, … and build output), React Native, npm, pnpm, yarn, bun, deno, corepack, node-gyp, Electron, TypeScript, Playwright, Puppeteer, Cypress
-  - Python: Python (caches, virtual environments, build output), uv, pip, poetry, conda, Pixi, pre-commit, Hugging Face, PyTorch
+  - JavaScript: Node (`node_modules`, `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.parcel-cache`, `.angular`, `.expo`, … and build output), React Native, npm, pnpm, yarn, bun, deno, corepack, node-gyp, Electron, TypeScript, Playwright (`playwright uninstall --all` when that CLI is on PATH), Puppeteer, Cypress (`cypress cache clear` when on PATH)
+  - Python: Python (caches, virtual environments, build output), uv, pip, poetry, conda, Pixi, pre-commit, Hugging Face (each repo removed with `hf cache rm` when the hf CLI is installed, offered with `brew install hf`), PyTorch
   - Rust: Cargo (`cargo clean`, registry via `cargo cache --autoclean`). Go: build and module caches. Java: Maven, Gradle, SBT. .NET (bin/obj, NuGet). Ruby: Bundler, RubyGems. PHP: Composer. Haskell: Stack, Cabal. Elixir. Dart: Flutter. Zig. C/C++: CMake
 - Platforms
   - Apple: Xcode (DerivedData, Previews, Archives, device support, simulator caches, unavailable simulators), Swift, CocoaPods, Carthage
-  - Containers: Docker (build cache, stopped containers, dangling and unused images, unused volumes and networks, each listed with `docker` and pruned with it), Podman
+  - Containers: Docker (build cache, and every stopped container, dangling or unused image, unused volume and unused network as its own item with size and age, removed with `docker rm`, `rmi`, `volume rm`, `network rm` and `builder prune`), Podman
   - Terraform. macOS: Homebrew, mise, `~/.cache/*`, `~/Library/Caches/*`, `~/Library/Logs/*`, installers in Downloads, Trash
 - Apps
   - Editors: VS Code, Insiders, Cursor, Windsurf, VSCodium; JetBrains. Game engines: Unity, Unreal, Godot
@@ -222,34 +222,26 @@ Homebrew can install these for their own cleanup when missing: uv, pnpm, yarn, p
 
 ## Code layout
 
+The code is split into layers; each may only use the layers listed before it, which `tests/architecture.test.ts` checks:
+
 ```
-bin/putzteufel.ts            entry point (Bun)
-src/cli.tsx                argument parsing, --list / --plugins, starts the TUI
-src/core/                  shared building blocks, no UI
-  types.ts  groups.ts      Target, Plugin, Tool, Hooks, Entry, ScanContext; ecosystems and sections
-  impact.ts                impact tags and default selection
-  paths.ts  shell.ts       path helpers and safety checks; shell, PATH lookup
-  disk.ts  clean.ts        sizes, ages, listings; deleting and running clean commands
-src/plugins/               one file per built-in plugin (node.ts, uv.ts, docker.ts, …), index.ts lists them
-src/config/                load.ts (config files), validate.ts (error messages), state.ts (welcome, theme)
-src/engine/                the plugin runtime
-  define.ts                plugin format: definePlugin, items, project rules, brew()
-  build.ts                 turns plugin definitions into scanners
-  items.ts  projects.ts    item scanning; the project folder walk
-  overlap.ts               folders shared by plugins: owners, counted-once sizes
-  scan.ts  run.ts          running a scan; running a cleanup (hooks, installs, failures, progress)
-src/tui/                   the terminal UI
-  App.tsx                  state, focus and key dispatch
-  keys.ts                  every key binding; feeds dispatch, footer and help
-  hints.ts  fuzzy.ts  sort.ts  theme.ts  look.ts  hooks.ts
-  model/                   rows, file browser stack, explanations, messages
-  map/layout.ts            sunburst and treemap geometry
-  state/                   useScan, useCleanRun
-  components/              Frame, Overlay, header/footer/message bar, empty state, tags
-  views/                   ListPane, FilesPane, PreviewPane, MapPane, dialogs/*
+src/domain/            the rules, no I/O: Target and plugin types, impact tags, ecosystems and sections,
+                       stable keys, shared-folder overlap, selection, sorting, fuzzy matching,
+                       how each path is disposed of, the cleanup plan and its steps
+src/plugins/           api.ts (definePlugin, brew, the plugin format) and one file per built-in plugin
+src/infrastructure/    talking to the machine: fs, shell, measure.ts (deep walk, hard links, exact freed),
+                       remove.ts (delete and Trash), oplog.ts, config/ (load, validate), store/ (state, size estimates),
+                       plugins/ (turning plugin definitions into scanners: items, projects, build)
+src/application/       use cases: session (config, plugins, scan context), scan, scan-session (with estimates),
+                       clean (hooks, installs, items, failures, uninstalls, operations log)
+src/interfaces/cli/    main.ts (commands), args.ts (flags and selectors), output.ts (text or NDJSON),
+                       serialize.ts (the JSON schema), commands/ (scan, files, plan, clean, plugins, history), tui.tsx
+src/interfaces/tui/    App.tsx (state and layout), input/dispatch.ts (what each key does in each mode),
+                       keys.ts (every key binding), state/ (scan, browse, preview, exact size, cleanup run),
+                       model/, map/, components/, views/
 ```
 
-A new built-in cleaner is a new file in `src/plugins/`; a new key goes into `src/tui/keys.ts` and then into the `dispatch` switch in `App.tsx`.
+A new built-in cleaner is a new file in `src/plugins/` plus a line in `src/plugins/index.ts`. A new key goes into `src/interfaces/tui/keys.ts` and then into `src/interfaces/tui/input/dispatch.ts`. A new command goes into `src/interfaces/cli/commands/` and `main.ts`, using the same application and domain functions the TUI uses.
 
 ## Development
 
