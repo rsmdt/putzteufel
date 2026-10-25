@@ -231,3 +231,31 @@ test('a folder two plugins claim is listed under both, counted once and cleaned 
   assert.match(frame(), /↷ skipped/);
   assert.equal((await Bun.file(journal).text()).trim(), 'tool');
 });
+
+test('the mouse wheel scrolls the items and the preview, and dragging a border resizes the panes', async () => {
+  const root = tempDir();
+  write(root, Object.fromEntries(Array.from({ length: 40 }, (_, i) => [[`p${String(i).padStart(2, '0')}/package.json`, '{}'], [`p${String(i).padStart(2, '0')}/node_modules/x`, 'x']]).flat()));
+  write(root, Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`p00/node_modules/f${i}`, 'y'.repeat(i + 1)])));
+  const { setup, frame, press, waitFor } = await start(root, 160, 32);
+  await waitFor((f) => f.includes('40 found') && !f.includes('scanning'), 'scan');
+  await press('e');
+  await waitFor((f) => f.includes(path.join(root, 'p39')) || f.includes('Items 1/43'), 'expanded');
+  const firstRow = () => lines(frame())[2];
+  assert.ok(firstRow().includes('Languages'));
+  await act(async () => {
+    for (let i = 0; i < 4; i++) await setup.mockMouse.scroll(20, 8, 'down');
+  });
+  await waitFor((f) => !lines(f)[2].includes('Languages') && /Items 13\/43/.test(f), 'the list scrolled and the cursor stayed in view');
+
+  await press('g', 'j', 'j', 'j');
+  await waitFor((f) => / 1-\d+\/\d+ /.test(f.split('\n').find((l) => l.includes('tab to scroll')) ?? ''), 'a long preview');
+  const previewTop = lines(frame()).findIndex((l) => l.includes('─ Preview'));
+  await act(async () => setup.mockMouse.scroll(20, previewTop + 3, 'down'));
+  await waitFor((f) => / 4-\d+\/\d+ /.test(f), 'the preview scrolled by three lines');
+
+  const leftWidth = 160 - Math.floor(160 * 0.42);
+  await act(async () => setup.mockMouse.drag(leftWidth, 10, leftWidth - 20, 10));
+  await waitFor((f) => lines(f)[1].indexOf('╮') === leftWidth - 21, 'the map grew to the left');
+  await act(async () => setup.mockMouse.drag(10, previewTop, 10, previewTop - 8));
+  await waitFor((f) => lines(f).findIndex((l) => l.includes('─ Preview')) === previewTop - 8, 'the preview grew upwards');
+});

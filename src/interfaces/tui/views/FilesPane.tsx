@@ -1,7 +1,7 @@
 import { human } from '../../../domain/format.ts';
 import { tildify } from '../../../domain/paths.ts';
 import { EmptyState } from '../components/EmptyState.tsx';
-import { Frame } from '../components/Frame.tsx';
+import { Frame, wheelDelta } from '../components/Frame.tsx';
 import { useDelayed } from '../hooks.ts';
 import { useLook } from '../look.ts';
 import { fit } from '../map/layout.ts';
@@ -15,9 +15,10 @@ interface FilesPaneProps {
   focusColor: string;
   sortLabel: string;
   owners: (path: string) => string[];
+  onScroll: (delta: number) => void;
 }
 
-export function FilesPane({ browse, width, height, focused, focusColor, sortLabel, owners }: FilesPaneProps) {
+export function FilesPane({ browse, width, height, focused, focusColor, sortLabel, owners, onScroll }: FilesPaneProps) {
   const { theme, icons } = useLook();
   const level = currentLevel(browse);
   const inner = { w: width - 2, h: height - 2 };
@@ -28,7 +29,7 @@ export function FilesPane({ browse, width, height, focused, focusColor, sortLabe
   const title = `${browse.target.selected ? '[x]' : '[ ]'} ${fit(where, Math.max(10, inner.w - 20))}`;
   const bottom = level.entries ? `${entries.length ? level.cursor + 1 : 0}/${entries.length} · ${sortLabel} · ${human(total)}` : sortLabel;
   return (
-    <Frame title={title} bottomTitle={bottom} focused={focused} focusColor={focusColor} width={width} height={height}>
+    <Frame title={title} bottomTitle={bottom} focused={focused} focusColor={focusColor} width={width} height={height} onMouseScroll={(e) => onScroll(wheelDelta(e))}>
       {loading ? <EmptyState message="Measuring folder sizes…" width={inner.w} height={inner.h} /> : null}
       {level.entries && !entries.length ? (
         browse.target.paths.length ? (

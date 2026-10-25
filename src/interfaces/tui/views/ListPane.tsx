@@ -4,7 +4,7 @@ import { type Step } from '../../../domain/run-plan.ts';
 import { human } from '../../../domain/format.ts';
 import { tildify } from '../../../domain/paths.ts';
 import { EmptyState, type EmptyStateProps } from '../components/EmptyState.tsx';
-import { Frame } from '../components/Frame.tsx';
+import { Frame, wheelDelta } from '../components/Frame.tsx';
 import { ImpactTag, Swatch } from '../components/Tags.tsx';
 import { Highlighted } from '../components/Text.tsx';
 import { useLook } from '../look.ts';
@@ -142,12 +142,13 @@ interface ListPaneProps {
   frame: number;
   bottomTitle: string;
   empty?: Omit<EmptyStateProps, 'width' | 'height'>;
+  onScroll: (delta: number) => void;
 }
 
-export function ListPane({ rows, cursor, offset, width, height, focused, focusColor, colors, highlights, young, shared, busy, runStep, spinner, frame, bottomTitle, empty }: ListPaneProps) {
+export function ListPane({ rows, cursor, offset, width, height, focused, focusColor, colors, highlights, young, shared, busy, runStep, spinner, frame, bottomTitle, empty, onScroll }: ListPaneProps) {
   const inner = { w: width - 2, h: height - 2 };
   return (
-    <Frame title={rows.length ? `Items ${Math.min(cursor, rows.length - 1) + 1}/${rows.length}` : 'Items'} bottomTitle={bottomTitle} focused={focused} focusColor={focusColor} width={width} height={height}>
+    <Frame title={rows.length ? `Items ${Math.min(cursor, rows.length - 1) + 1}/${rows.length}` : 'Items'} bottomTitle={bottomTitle} focused={focused} focusColor={focusColor} width={width} height={height} onMouseScroll={(e) => onScroll(wheelDelta(e))}>
       {rows.length === 0 && empty ? <EmptyState {...empty} width={inner.w} height={inner.h} /> : null}
       {rows.slice(offset, offset + inner.h).map((row, i) => (
         <RowLine key={row.key} row={row} active={offset + i === cursor} young={young} shared={shared} spinner={busy(row) === 'active' ? spinner : undefined} waiting={busy(row) === 'waiting'} run={row.kind === 'target' ? runStep(row.target) : undefined} frame={frame} width={inner.w} color={colors.get(row.key)} highlight={highlights.get(row.key)} />

@@ -1,4 +1,4 @@
-import type { KeyEvent } from '@opentui/core';
+import type { KeyEvent, MouseEvent } from '@opentui/core';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Hooks, type Plugin, type ScanContext, type Target, type Tool } from '../../domain/types.ts';
@@ -45,6 +45,12 @@ import { PreviewPane, previewRows } from './views/PreviewPane.tsx';
 
 const AGE_STEPS = [0, 1, 3, 7, 14, 30, 60, 90, 180, 365];
 const SUNBURST_DEPTH = 3;
+const MAP_SHARE = 0.42;
+const PREVIEW_SHARE = 0.32;
+const MIN_LEFT = 40;
+const MIN_MAP = 20;
+const MIN_LIST = 4;
+const MIN_PREVIEW = 5;
 const LOCKED_WHILE_CLEANING = new Set<Action>(['toggle', 'all', 'ageUp', 'ageDown', 'clean', 'rescan', 'install', 'trash', 'quit']);
 
 export interface AppProps {
@@ -98,16 +104,19 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   const [dialogOffset, setDialogOffset] = useState(0);
   const [helpQuery, setHelpQuery] = useState('');
   const [helpSearching, setHelpSearching] = useState(false);
-  const [previewOffset, setPreviewOffset] = useState(0);
+  const [previewOffset, setPreviewOffset] = useState<number | null>(null);
+  const [shares, setShares] = useState({ map: MAP_SHARE, preview: PREVIEW_SHARE });
+  const dragging = useRef<'map' | 'preview' | null>(null);
+  const [, setListScroll] = useState(0);
 
   const look = useMemo(() => ({ theme: themeNamed(themeName), icons: ICONS[icons] }), [themeName, icons]);
   const theme = look.theme;
   const screen = { width, height };
   const bodyHeight = Math.max(6, height - 3);
   const showMap = mapMode !== 'off' && width >= MAP_MIN_WIDTH;
-  const mapWidth = showMap ? Math.floor(width * 0.42) : 0;
+  const mapWidth = showMap ? Math.max(MIN_MAP, Math.min(width - MIN_LEFT, Math.floor(width * shares.map))) : 0;
   const leftWidth = width - mapWidth;
-  const previewHeight = Math.max(5, Math.floor(bodyHeight * 0.32));
+  const previewHeight = Math.max(MIN_PREVIEW, Math.min(bodyHeight - MIN_LIST, Math.floor(bodyHeight * shares.preview)));
   const listHeight = Math.max(4, bodyHeight - previewHeight);
   const listRows = listHeight - 2;
   const pageRows = dialogRows(screen);
@@ -162,6 +171,11 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
   };
   const preview = usePreview({ row: current, browse, descriptions, recentDays: ctx.recentDays, minAge, theme, overlap, log: logLines(current), version: scan.version });
 
+  const previewMax = Math.max(0, preview.lines.length - previewRows(previewHeight));
+  const following = current !== undefined && (rowBusy(current) !== undefined || hasRunSteps(current));
+  const previewStart = Math.min(previewMax, previewOffset ?? (following ? Math.max(0, preview.logEnd - previewRows(previewHeight)) : 0));
+  const scrollPreview = (delta: number) => setPreviewOffset(Math.max(0, Math.min(previewMax, previewStart + delta)));
+
   const overlayContext = (): Context | null => {
     if (!overlay) return null;
     if (overlay === 'help') return helpSearching ? 'helpSearch' : 'help';
@@ -182,7 +196,25 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     trashAvailable().then(setCanTrash);
   }, []);
 
-  useEffect(() => setPreviewOffset(0), [current?.key, browse ? currentEntry(browse)?.path : undefined]);
+  useEffect(() => setPreviewOffset(null), [current?.key, browse ? currentEntry(browse)?.path : undefined]);
+
+  const scrollList = (delta: number) => {
+    const top = Math.max(0, Math.min(rows.length - listRows, offsetRef.current + delta));
+    offsetRef.current = top;
+    moveTo(Math.max(top, Math.min(top + listRows - 1, cursorRef.current)));
+    setListScroll((n) => n + 1);
+  };
+
+  const onBorderDown = (event: MouseEvent) => {
+    const body = event.y >= 1 && event.y <= bodyHeight;
+    if (showMap && body && (event.x === leftWidth - 1 || event.x === leftWidth)) dragging.current = 'map';
+    else if (event.x < leftWidth && (event.y === listHeight || event.y === listHeight + 1)) dragging.current = 'preview';
+  };
+
+  const onBorderDrag = (event: MouseEvent) => {
+    if (dragging.current === 'map') setShares((s) => ({ ...s, map: Math.max(0.05, Math.min(0.95, (width - event.x) / width)) }));
+    if (dragging.current === 'preview') setShares((s) => ({ ...s, preview: Math.max(0.05, Math.min(0.95, (bodyHeight + 1 - event.y) / bodyHeight)) }));
+  };
 
   const moveTo = (index: number) => {
     const next = Math.max(0, Math.min(rows.length - 1, index));
@@ -313,7 +345,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     listRows,
     pageRows,
     previewPage: previewRows(previewHeight),
-    previewMax: Math.max(0, preview.lines.length - previewRows(previewHeight)),
+    previewMax,
     toggle,
     reveal,
     browser,
@@ -336,7 +368,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
     openDialog,
     closeDialog: () => setOverlay(null),
     setDialogOffset,
-    setPreviewOffset,
+    setPreviewOffset: (value) => setPreviewOffset(typeof value === 'function' ? value(previewStart) : value),
     themeName,
     setThemeName,
     themeBefore,
@@ -447,7 +479,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
 
   return (
     <LookContext.Provider value={look}>
-      <box flexDirection="column" width={width} height={height} backgroundColor={theme.name === 'dark' ? undefined : theme.panel}>
+      <box flexDirection="column" width={width} height={height} backgroundColor={theme.name === 'dark' ? undefined : theme.panel} onMouseDown={onBorderDown} onMouseDrag={onBorderDrag} onMouseUp={() => (dragging.current = null)} onMouseDragEnd={() => (dragging.current = null)}>
         <HeaderBar
           context={context}
           width={width}
@@ -471,7 +503,7 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
         <box flexDirection="row" height={bodyHeight}>
           <box flexDirection="column" width={leftWidth}>
             {browse ? (
-              <FilesPane browse={browse} width={leftWidth} height={listHeight} focused={paneFocus === 'list'} focusColor={focusColor} sortLabel={describeSort(sort)} owners={ownersOf} />
+              <FilesPane browse={browse} width={leftWidth} height={listHeight} focused={paneFocus === 'list'} focusColor={focusColor} sortLabel={describeSort(sort)} owners={ownersOf} onScroll={(delta) => browser.move((i) => i + delta)} />
             ) : (
               <ListPane
                 rows={rows}
@@ -491,9 +523,10 @@ export function App({ plugins, ctx, configErrors = [], hooks = {}, icons = 'unic
                 frame={spinnerFrame}
                 bottomTitle={`${describeSort(sort)} · ${selected.length} selected · ${human(uniqueSize(selected))}`}
                 empty={listEmpty}
+                onScroll={scrollList}
               />
             )}
-            <PreviewPane lines={preview.lines} offset={previewOffset} width={leftWidth} height={previewHeight} focused={paneFocus === 'preview'} focusColor={focusColor} followTo={current && (rowBusy(current) !== undefined || hasRunSteps(current)) ? preview.logEnd : undefined} />
+            <PreviewPane lines={preview.lines} offset={previewStart} width={leftWidth} height={previewHeight} focused={paneFocus === 'preview'} focusColor={focusColor} onScroll={scrollPreview} />
           </box>
           {showMap ? (
             <MapPane
