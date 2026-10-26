@@ -20,6 +20,7 @@ export const GROUPS = {
   containers: 'Containers',
   terraform: 'Terraform',
   macos: 'macOS',
+  tagged: 'Tagged caches',
   editors: 'Editors',
   gameEngines: 'Game engines',
   custom: 'Custom',
@@ -43,6 +44,7 @@ const SECTION_OF: Record<string, Section> = {
   [GROUPS.containers]: 'Platforms',
   [GROUPS.terraform]: 'Platforms',
   [GROUPS.macos]: 'Platforms',
+  [GROUPS.tagged]: 'Platforms',
   [GROUPS.editors]: 'Apps',
   [GROUPS.gameEngines]: 'Apps',
 };

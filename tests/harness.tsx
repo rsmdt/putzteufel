@@ -6,7 +6,7 @@ import { type Plugin } from '../src/domain/types.ts';
 import { builtinPlugins } from '../src/plugins/index.ts';
 import { projectsScanner } from '../src/infrastructure/plugins/build.ts';
 import { App, type AppProps } from '../src/interfaces/tui/App.tsx';
-import { tempDir, write } from './fixture.ts';
+import { installed, tempDir, write } from './fixture.ts';
 
 process.env.PUTZTEUFEL_LOG = `${tempDir()}/operations.log`;
 
@@ -49,7 +49,8 @@ export async function start(root: string, width = 200, height = 30, plugins: Plu
 
 export function twoProjects(): string {
   const root = tempDir();
-  write(root, { 'alpha/package.json': '{}', 'alpha/node_modules/x/index.js': 'x', 'alpha/node_modules/big.bin': 'y'.repeat(50_000), 'bravo/package.json': '{}', 'bravo/node_modules/y': 'y' });
+  write(root, { 'alpha/package.json': '{}', 'alpha/node_modules/x/index.js': 'x'.repeat(10_000), 'alpha/node_modules/big.bin': 'y'.repeat(50_000), 'bravo/package.json': '{}', 'bravo/node_modules/y': 'y' });
+  installed(root, 'alpha', 'bravo');
   return root;
 }
 

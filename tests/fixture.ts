@@ -15,6 +15,14 @@ export function write(root: string, files: Record<string, string>): void {
   }
 }
 
+export function installed(root: string, ...projects: string[]): void {
+  const later = new Date(Date.now() + 60_000);
+  for (const project of projects) {
+    write(root, { [`${project}/package-lock.json`]: '{}', [`${project}/node_modules/.package-lock.json`]: '{}' });
+    utimesSync(path.join(root, project, 'node_modules/.package-lock.json'), later, later);
+  }
+}
+
 export function projectTree(): string {
   const root = tempDir();
   write(root, {
@@ -44,11 +52,13 @@ export function projectTree(): string {
     'rn/package.json': '{}',
     'rn/android/build/x': 'x',
     'old/package.json': '{}',
+    'old/package-lock.json': '{}',
     'old/node_modules/x': 'x',
+    'old/node_modules/.package-lock.json': '{}',
   });
   execFileSync('git', ['init', '-q'], { cwd: path.join(root, 'tracked') });
   symlinkSync(path.join(root, 'outside'), path.join(root, 'linked/node_modules'));
   const longAgo = new Date('2020-01-01');
-  utimesSync(path.join(root, 'old/package.json'), longAgo, longAgo);
+  for (const file of ['old/package.json', 'old/package-lock.json', 'old/node_modules/x']) utimesSync(path.join(root, file), longAgo, longAgo);
   return root;
 }

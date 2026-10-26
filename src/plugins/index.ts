@@ -2,6 +2,7 @@ import { type PluginDef } from './api.ts';
 import appCaches from './app-caches.ts';
 import bun from './bun.ts';
 import bundler from './bundler.ts';
+import cacheTag from './cache-tag.ts';
 import cabal from './cabal.ts';
 import cargo from './cargo.ts';
 import carthage from './carthage.ts';
@@ -115,4 +116,5 @@ export const builtinPlugins: PluginDef[] = [
   xdgCaches,
   yarn,
   zig,
+  cacheTag,
 ];

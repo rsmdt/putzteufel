@@ -53,7 +53,7 @@ putzteufel deletes the folders itself.
 
 | Name | Group | Description |
 |---|---|---|
-| `putzteufel` | all | dependency and build folders in projects (`node_modules`, virtual environments, `target`, `build`), download caches of tools without a cleanup command, Xcode DerivedData, editor caches, `~/.cache`, `~/Library/Caches`, old installers and the Trash |
+| `putzteufel` | all | dependency and build folders in projects (`node_modules`, virtual environments, `target`, `build`), download caches of tools without a cleanup command, Xcode DerivedData, folders tagged with `CACHEDIR.TAG`, editor caches, `~/.cache`, `~/Library/Caches`, old installers and the Trash |
 
 ### Vendored
 
@@ -126,6 +126,7 @@ Built-in plugins are one file per tool in `src/plugins/`.
 - Nothing is removed before you confirm the review
 - Symlinks are never followed, and a committed `build/` is never offered
 - A folder replaced since the scan is left in place
+- Projects with a running process, and `node_modules` changed after the last install, start unselected
 - The home folder and system folders are always refused
 - Unrecoverable folders go to the Trash
 - Every operation is logged

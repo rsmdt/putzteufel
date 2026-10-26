@@ -56,7 +56,7 @@ test('the file browser lists what an item contains before anything is removed', 
 test('the age keys preselect only items older than the threshold', async () => {
   const root = twoProjects();
   const old = new Date(Date.now() - 100 * 86_400_000);
-  for (const f of ['alpha/package.json', 'alpha/node_modules/x/index.js', 'alpha/node_modules/big.bin', 'alpha/node_modules/x', 'alpha/node_modules']) utimesSync(path.join(root, f), old, old);
+  for (const f of ['alpha/package.json', 'alpha/package-lock.json', 'alpha/node_modules/x/index.js', 'alpha/node_modules/big.bin', 'alpha/node_modules/x', 'alpha/node_modules']) utimesSync(path.join(root, f), old, old);
   const { frame, press, burst, waitFor } = await start(root);
   await waitFor((f) => f.includes('2/2') && !f.includes('scanning'), 'scan');
   assert.ok(frame().includes('any age'));

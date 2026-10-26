@@ -19,7 +19,7 @@ function run(args: string[], cwd: string, home = tempDir()) {
 
 function projects(): string {
   const root = tempDir();
-  const files = { 'alpha/package.json': '{}', 'alpha/node_modules/x/index.js': 'x', 'bravo/package.json': '{}', 'bravo/node_modules/y': 'y', 'bravo/dist/out.js': 'z' };
+  const files = { 'alpha/package.json': '{}', 'alpha/package-lock.json': '{}', 'alpha/node_modules/x/index.js': 'x', 'alpha/node_modules/.package-lock.json': '{}', 'bravo/package.json': '{}', 'bravo/package-lock.json': '{}', 'bravo/node_modules/y': 'y', 'bravo/node_modules/.package-lock.json': '{}', 'bravo/dist/out.js': 'z' };
   write(root, files);
   const old = new Date(Date.now() - 90 * 86_400_000);
   for (const f of Object.keys(files)) utimesSync(path.join(root, f), old, old);
@@ -101,7 +101,7 @@ test('files lists an item’s entries; failures follow --on-failure; bad input i
   const all = scanOf(root).of('done')[0].targets;
   const alpha = all.find((t: { label: string }) => t.label === path.join(root, 'alpha')).key;
   const files = run(['files', alpha, root, '--no-caches', '--json'], root);
-  assert.deepEqual(files.of('files')[0].entries.map((e: { name: string }) => e.name), ['x']);
+  assert.deepEqual(files.of('files')[0].entries.map((e: { name: string }) => e.name).sort(), ['.package-lock.json', 'x']);
   assert.equal(files.of('files')[0].dir, path.join(root, 'alpha/node_modules'));
 
   write(root, { 'putzteufel.config.mjs': `export default { plugins: [{ name: 'Flaky', paths: ['${root}/flaky'], clean: 'echo nope >&2; exit 4' }] };`, 'flaky/a': 'x' });
