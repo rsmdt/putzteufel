@@ -1,13 +1,13 @@
 import { type CleanOptions, type Disposed, disposalFor } from '../domain/disposal.ts';
 import { rm } from 'node:fs/promises';
 import { isUnsafeToDelete, tildify } from '../domain/paths.ts';
-import { exists } from './fs.ts';
+import { exists, identity } from './fs.ts';
 import { describeCommand, resolveCommand } from '../domain/command.ts';
 import { execFileAsync, shell, which } from './shell.ts';
 import { dirEntries } from './measure.ts';
 import { type Entry, type Target } from '../domain/types.ts';
 
-const CLEAN_TIMEOUT = 30 * 60_000;
+const CLEAN_TIMEOUT = Number(process.env.PUTZTEUFEL_CLEAN_TIMEOUT_MS) || 30 * 60_000;
 const SPLITS = 8;
 
 interface CleanOutcome {
@@ -86,6 +86,10 @@ export async function cleanTarget(target: Target, options: CleanOptions, signal?
     if (signal?.aborted) break;
     if (isUnsafeToDelete(p)) {
       outcome.errors.push(`refused to delete ${p}`);
+      continue;
+    }
+    if (target.identities && (await identity(p)) !== target.identities[p]) {
+      outcome.errors.push(`${tildify(p)} was replaced since the scan, left in place`);
       continue;
     }
     const how = disposalFor(target, p, options);

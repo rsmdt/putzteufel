@@ -2,6 +2,7 @@ import { type Activity, type Estimate, type Plugin, type ScanContext, type ScanP
 import { human } from '../domain/format.ts';
 import { tildify } from '../domain/paths.ts';
 import { forgetSizes } from '../infrastructure/measure.ts';
+import { identities } from '../infrastructure/fs.ts';
 import { limiter } from '../infrastructure/shell.ts';
 import { preselect } from '../domain/impact.ts';
 import { targetKey } from '../domain/key.ts';
@@ -88,6 +89,7 @@ export async function scanAll(plugins: Plugin[], ctx: ScanContext, onTarget: (t:
         const id = `measure:${target.id}`;
         begin({ id, kind: 'measure', label: `${target.plugin}: ${tildify(target.label)}`, plugins: [target.plugin], targetId: target.id, detail: target.paths.map(tildify).join(', ') });
         update(step, { state: 'running', title: `Measuring ${subject}`, startedAt: Date.now() });
+        target.identities = await identities(target.paths);
         await plugin.measure(target).finally(() => {
           counts.measured++;
           end(id);

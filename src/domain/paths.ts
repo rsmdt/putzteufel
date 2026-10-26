@@ -22,5 +22,5 @@ export function matchesAny(value: string, patterns: string[]): boolean {
 
 export function isUnsafeToDelete(p: string): boolean {
   const abs = path.resolve(p);
-  return abs === HOME || HOME.startsWith(abs + path.sep) || abs.split(path.sep).filter(Boolean).length <= 1;
+  return abs === HOME || HOME.startsWith(abs + path.sep) || abs.split(path.sep).filter(Boolean).length <= 1 || abs.startsWith('/System/');
 }

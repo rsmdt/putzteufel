@@ -27,6 +27,7 @@ export interface Target {
   group: string;
   label: string;
   paths: string[];
+  identities?: Record<string, string>;
   sizePaths: string[];
   listed: string[];
   commands: Command[];

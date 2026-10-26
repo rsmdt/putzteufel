@@ -125,6 +125,7 @@ Built-in plugins are one file per tool in `src/plugins/`.
 
 - Nothing is removed before you confirm the review
 - Symlinks are never followed, and a committed `build/` is never offered
+- A folder replaced since the scan is left in place
 - The home folder and system folders are always refused
 - Unrecoverable folders go to the Trash
 - Every operation is logged

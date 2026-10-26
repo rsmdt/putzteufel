@@ -1,8 +1,8 @@
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { type Emit, type Plugin, type ScanContext, type Target } from '../../domain/types.ts';
 import { measure } from '../measure.ts';
-import { expandHome, matchesAny, wildcard } from '../../domain/paths.ts';
+import { expandHome, isUnsafeToDelete, matchesAny, tildify, wildcard } from '../../domain/paths.ts';
 import { exists } from '../fs.ts';
 import { shell, which } from '../shell.ts';
 import { type ItemSpec, type Owner } from '../../plugins/api.ts';
@@ -98,11 +98,16 @@ export class ItemPlugin implements Plugin {
     const lines = (output ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
     const listedPaths: string[] = [];
     const listed: string[] = [];
+    const refused: string[] = [];
     for (const line of lines) {
       const candidate = expandHome(line);
       if (!path.isAbsolute(candidate)) listed.push(line);
-      else if ((await exists(candidate)) && !matchesAny(candidate, skip)) listedPaths.push(candidate);
+      else if ((await exists(candidate)) && !matchesAny(candidate, skip)) {
+        if (isUnsafeToDelete(candidate) || isUnsafeToDelete(await realpath(candidate).catch(() => candidate))) refused.push(tildify(candidate));
+        else listedPaths.push(candidate);
+      }
     }
+    if (refused.length) throw new Error(`${spec.list} named ${refused.join(', ')}, which putzteufel never cleans; skipped`);
     const paths = !spec.tool ? [...matched, ...listedPaths] : spec.list && installed ? listedPaths : matched;
     if (!paths.length && !listed.length) return;
     emit({ label: spec.name, paths, listed, commands, tool, hooks, item, sizePaths: await expandAll(spec.sizePaths), impact, note });
