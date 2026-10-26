@@ -61,29 +61,29 @@ The tool cleans up with its own command. If it is missing, putzteufel deletes th
 
 | Name | Group | Description |
 |---|---|---|
-| `npm` | JavaScript | package cache |
-| `pnpm`¹ | JavaScript | content-addressable store |
-| `yarn`¹ | JavaScript | package cache |
-| `deno`¹ | JavaScript | module cache |
-| `playwright` | JavaScript | downloaded browsers |
-| `cypress` | JavaScript | downloaded binaries |
-| `uv`¹ | Python | package cache |
-| `pip` | Python | package cache |
-| `poetry`¹ | Python | package cache |
-| `conda` | Python | downloaded packages |
-| `pre-commit`¹ | Python | hook environments |
-| `hf`¹ | Python | Hugging Face models and datasets |
-| `cargo` | Rust | `target` folders, and the registry with `cargo-cache`¹ |
-| `go`¹ | Go | build and module cache |
-| `dotnet` | .NET | NuGet packages |
-| `gem` | Ruby | old gem versions |
-| `composer`¹ | PHP | package cache |
-| `pod`¹ | Apple | CocoaPods cache |
+| [`npm`](https://github.com/npm/cli) | JavaScript | package cache |
+| [`pnpm`](https://github.com/pnpm/pnpm)¹ | JavaScript | content-addressable store |
+| [`yarn`](https://github.com/yarnpkg/berry)¹ | JavaScript | package cache |
+| [`deno`](https://github.com/denoland/deno)¹ | JavaScript | module cache |
+| [`playwright`](https://github.com/microsoft/playwright) | JavaScript | downloaded browsers |
+| [`cypress`](https://github.com/cypress-io/cypress) | JavaScript | downloaded binaries |
+| [`uv`](https://github.com/astral-sh/uv)¹ | Python | package cache |
+| [`pip`](https://github.com/pypa/pip) | Python | package cache |
+| [`poetry`](https://github.com/python-poetry/poetry)¹ | Python | package cache |
+| [`conda`](https://github.com/conda/conda) | Python | downloaded packages |
+| [`pre-commit`](https://github.com/pre-commit/pre-commit)¹ | Python | hook environments |
+| [`hf`](https://github.com/huggingface/huggingface_hub)¹ | Python | Hugging Face models and datasets |
+| [`cargo`](https://github.com/rust-lang/cargo) | Rust | `target` folders, and the registry with [`cargo-cache`](https://github.com/matthiaskrgr/cargo-cache)¹ |
+| [`go`](https://github.com/golang/go)¹ | Go | build and module cache |
+| [`dotnet`](https://github.com/dotnet/sdk) | .NET | NuGet packages |
+| [`gem`](https://github.com/ruby/rubygems) | Ruby | old gem versions |
+| [`composer`](https://github.com/composer/composer)¹ | PHP | package cache |
+| [`pod`](https://github.com/CocoaPods/CocoaPods)¹ | Apple | CocoaPods cache |
 | `xcrun` | Apple | unavailable simulators |
-| `docker` | Containers | stopped containers, unused images, volumes and networks, build cache |
-| `podman` | Containers | unused containers, images and volumes |
-| `brew` | macOS | old versions and downloads |
-| `mise` | macOS | tool cache |
+| [`docker`](https://github.com/docker/cli) | Containers | stopped containers, unused images, volumes and networks, build cache |
+| [`podman`](https://github.com/podman-container-tools/podman) | Containers | unused containers, images and volumes |
+| [`brew`](https://github.com/Homebrew/brew) | macOS | old versions and downloads |
+| [`mise`](https://github.com/jdx/mise) | macOS | tool cache |
 
 ---
 
