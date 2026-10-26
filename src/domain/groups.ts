@@ -20,9 +20,12 @@ export const GROUPS = {
   containers: 'Containers',
   terraform: 'Terraform',
   macos: 'macOS',
+  buildTools: 'Build tools',
+  nix: 'Nix',
   tagged: 'Tagged caches',
   editors: 'Editors',
   gameEngines: 'Game engines',
+  ai: 'AI tools',
   custom: 'Custom',
 } as const;
 
@@ -44,9 +47,12 @@ const SECTION_OF: Record<string, Section> = {
   [GROUPS.containers]: 'Platforms',
   [GROUPS.terraform]: 'Platforms',
   [GROUPS.macos]: 'Platforms',
+  [GROUPS.buildTools]: 'Platforms',
+  [GROUPS.nix]: 'Platforms',
   [GROUPS.tagged]: 'Platforms',
   [GROUPS.editors]: 'Apps',
   [GROUPS.gameEngines]: 'Apps',
+  [GROUPS.ai]: 'Apps',
 };
 
 export function sectionOf(group: string): Section {

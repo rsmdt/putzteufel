@@ -53,7 +53,7 @@ putzteufel deletes the folders itself.
 
 | Name | Group | Description |
 |---|---|---|
-| `putzteufel` | all | dependency and build folders in projects (`node_modules`, virtual environments, `target`, `build`), download caches of tools without a cleanup command, Xcode DerivedData, folders tagged with `CACHEDIR.TAG`, editor caches, `~/.cache`, `~/Library/Caches`, old installers and the Trash |
+| `putzteufel` | all | dependency and build folders in projects (`node_modules`, virtual environments, `target`, `build`), download caches of tools without a cleanup command, Xcode DerivedData and old device support files, folders tagged with `CACHEDIR.TAG`, old Claude Code versions in Claude Desktop, leftover automation browser profiles, editor caches, `~/.cache`, `~/Library/Caches`, old installers and the Trash |
 
 ### Vendored
 
@@ -78,12 +78,14 @@ The tool cleans up with its own command. If it is missing, putzteufel deletes th
 | [`dotnet`](https://github.com/dotnet/sdk) | .NET | NuGet packages |
 | [`gem`](https://github.com/ruby/rubygems) | Ruby | old gem versions |
 | [`composer`](https://github.com/composer/composer)¹ | PHP | package cache |
+| [`dart`](https://github.com/dart-lang/sdk) | Dart | pub cache |
 | [`pod`](https://github.com/CocoaPods/CocoaPods)¹ | Apple | CocoaPods cache |
-| `xcrun` | Apple | unavailable simulators |
+| `xcrun` | Apple | unavailable simulators, unused simulator runtimes |
 | [`docker`](https://github.com/docker/cli) | Containers | stopped containers, unused images, volumes and networks, build cache |
 | [`podman`](https://github.com/podman-container-tools/podman) | Containers | unused containers, images and volumes |
 | [`brew`](https://github.com/Homebrew/brew) | macOS | old versions and downloads |
 | [`mise`](https://github.com/jdx/mise) | macOS | tool cache |
+| [`nix-store`](https://github.com/NixOS/nix) | Nix | unreachable store paths |
 
 ---
 
