@@ -1,6 +1,6 @@
 {
   "name": "putzteufel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fullscreen TUI that finds and removes regenerable dev clutter, using each tool's own cleanup command",
   "license": "GPL-3.0-or-later",
   "author": "Rudolf Schmidt",
