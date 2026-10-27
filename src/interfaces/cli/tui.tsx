@@ -7,7 +7,12 @@ export async function tuiCommand(values: Values, roots: string[]): Promise<numbe
   const session = await openSession(sessionOptions(values, roots));
   const [{ createCliRenderer }, { createRoot }, { App }] = await Promise.all([import('@opentui/core'), import('@opentui/react'), import('../tui/App.tsx')]);
   const [state, estimates] = await Promise.all([loadState(), loadEstimates()]);
-  const renderer = await createCliRenderer({ screenMode: 'alternate-screen', useMouse: true, exitOnCtrlC: true });
+  const renderer = await createCliRenderer({ screenMode: 'alternate-screen', useMouse: true, exitOnCtrlC: true }).catch((error: Error) => {
+    const runtime = process.versions.bun ? `Bun ${process.versions.bun}` : `Node.js ${process.versions.node}`;
+    console.error(`putzteufel: the fullscreen TUI cannot start on ${runtime}.\n${error.message}\nIt needs Node.js 26.4 or newer, or Bun 1.3.14 or newer (bunx putzteufel).`);
+    return null;
+  });
+  if (!renderer) return 1;
   createRoot(renderer).render(
     <App
       plugins={session.plugins}
